@@ -67,13 +67,13 @@ export async function POST(req: NextRequest) {
           }
 
           if (value && typeof value === 'string' && value.trim()) {
-            // Humanize label if it's a slug like "what-is-this-meeting-about"
-            const cleanLabel = label.includes('-')
-              ? label
-                  .split('-')
-                  .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
-                  .join(' ')
-              : label;
+            // Humanize label if it's a slug like "what_is_this_meeting_about" or "what-is-this-meeting-about"
+            const cleanLabel = label
+              .replace(/[-_]+/g, ' ')
+              .trim()
+              .split(' ')
+              .map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
+              .join(' ');
             customAnswers.push(`${cleanLabel}: ${value.trim()}`);
           }
         }
@@ -88,17 +88,17 @@ export async function POST(req: NextRequest) {
         }
       }
 
-      // Build clean message with client responses
+      // Build clean message with client responses (No emojis)
       const messageLines: string[] = [];
-      messageLines.push(`📅 Event: ${eventTitle}`);
-      messageLines.push(`⏰ Scheduled for: ${formattedTime}`);
+      messageLines.push(`Event: ${eventTitle}`);
+      messageLines.push(`Scheduled for: ${formattedTime}`);
       if (meetingLink) {
-        messageLines.push(`🔗 Meeting Link: ${meetingLink}`);
+        messageLines.push(`Meeting Link: ${meetingLink}`);
       }
 
       if (customAnswers.length > 0) {
         messageLines.push('');
-        messageLines.push('📝 Client Responses:');
+        messageLines.push('Client Responses:');
         messageLines.push(...customAnswers.map((a) => `• ${a}`));
       } else if (p.description) {
         messageLines.push('');

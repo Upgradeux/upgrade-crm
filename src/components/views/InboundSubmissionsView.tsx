@@ -25,6 +25,9 @@ import {
   IconBriefcase,
   IconUser,
   IconPhone,
+  IconVideo,
+  IconFileText,
+  IconExternalLink,
 } from '@tabler/icons-react';
 import { formatDate } from '@/lib/utils';
 
@@ -520,9 +523,95 @@ async function submitProjectInquiry(data) {
               <span className="text-[10px] font-semibold text-[var(--t-font-color-tertiary)] uppercase tracking-wider block">
                 Project Brief & Details
               </span>
-              <div className="p-3 rounded-[6px] bg-[var(--t-background-secondary)] border border-[var(--t-border-color-light)] text-[11.5px] text-[var(--t-font-color-primary)] leading-relaxed whitespace-pre-wrap">
-                {viewingSubmission.message || 'No project brief provided.'}
-              </div>
+              {viewingSubmission.source === 'Cal.com Booking' || viewingSubmission.message?.includes('Scheduled for:') ? (
+                <div className="p-3 rounded-[6px] bg-[var(--t-background-secondary)] border border-[var(--t-border-color-light)] space-y-2.5 text-[11.5px] text-[var(--t-font-color-primary)]">
+                  {(() => {
+                    const cleanMsg = (viewingSubmission.message || '')
+                      .replace(/[\u{1F300}-\u{1F6FF}\u{1F900}-\u{1F9FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}]/gu, '')
+                      .trim();
+                    const lines = cleanMsg.split('\n').map((l) => l.trim()).filter(Boolean);
+
+                    const eventLine = lines.find((l) => l.startsWith('Event:'))?.replace(/^Event:\s*/, '');
+                    const timeLine = lines.find((l) => l.startsWith('Scheduled for:'))?.replace(/^Scheduled for:\s*/, '');
+                    const linkLine = lines.find((l) => l.startsWith('Meeting Link:'))?.replace(/^Meeting Link:\s*/, '');
+
+                    const clientResponses = lines
+                      .filter((l) => l.startsWith('•'))
+                      .map((l) => l.replace(/^•\s*/, ''));
+
+                    return (
+                      <>
+                        <div className="space-y-1.5 pb-2 border-b border-[var(--t-border-color-light)]">
+                          {eventLine && (
+                            <div className="flex items-center gap-2">
+                              <IconCalendar size={13} className="text-indigo-400 shrink-0" />
+                              <span className="font-semibold text-[var(--t-font-color-primary)]">{eventLine}</span>
+                            </div>
+                          )}
+                          {timeLine && (
+                            <div className="flex items-center gap-2">
+                              <IconClock size={13} className="text-cyan-400 shrink-0" />
+                              <span className="text-[var(--t-font-color-secondary)] font-mono text-[11px]">{timeLine}</span>
+                            </div>
+                          )}
+                          {linkLine && (
+                            <div className="flex items-center justify-between gap-2 pt-0.5">
+                              <div className="flex items-center gap-2 truncate">
+                                <IconVideo size={13} className="text-emerald-400 shrink-0" />
+                                <span className="font-mono text-[11px] text-emerald-400 truncate">{linkLine}</span>
+                              </div>
+                              <a
+                                href={linkLine.startsWith('http') ? linkLine : `https://${linkLine}`}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="h-[22px] px-2 rounded-[3px] bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20 border border-emerald-500/20 text-[10.5px] font-medium flex items-center gap-1 shrink-0 transition-colors"
+                              >
+                                <IconExternalLink size={11} />
+                                <span>Join Call</span>
+                              </a>
+                            </div>
+                          )}
+                        </div>
+
+                        {clientResponses.length > 0 && (
+                          <div className="space-y-1.5 pt-0.5">
+                            <div className="flex items-center gap-1.5 text-[10.5px] font-semibold text-[var(--t-font-color-tertiary)] uppercase tracking-wider">
+                              <IconFileText size={12} className="text-amber-400" />
+                              <span>Client Responses</span>
+                            </div>
+                            <div className="space-y-1 pl-1">
+                              {clientResponses.map((resp, i) => {
+                                const [key, ...rest] = resp.split(':');
+                                const cleanKey = (key || '')
+                                  .replace(/[-_]+/g, ' ')
+                                  .trim()
+                                  .split(' ')
+                                  .map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
+                                  .join(' ');
+                                const val = rest.join(':').trim();
+                                return (
+                                  <div key={i} className="text-[11.5px] leading-relaxed">
+                                    <span className="text-[var(--t-font-color-tertiary)] font-medium">{cleanKey}: </span>
+                                    <span className="text-[var(--t-font-color-primary)] font-medium">{val || ''}</span>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        )}
+                      </>
+                    );
+                  })()}
+                </div>
+              ) : (
+                <div className="p-3 rounded-[6px] bg-[var(--t-background-secondary)] border border-[var(--t-border-color-light)] text-[11.5px] text-[var(--t-font-color-primary)] leading-relaxed whitespace-pre-wrap">
+                  {viewingSubmission.message
+                    ? viewingSubmission.message
+                        .replace(/[\u{1F300}-\u{1F6FF}\u{1F900}-\u{1F9FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}]/gu, '')
+                        .trim()
+                    : 'No project brief provided.'}
+                </div>
+              )}
             </div>
 
             {/* Budget & Timeline Grid */}

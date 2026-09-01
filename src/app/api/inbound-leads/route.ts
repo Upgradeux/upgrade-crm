@@ -67,6 +67,12 @@ export async function POST(req: NextRequest) {
     }
 
     if (!finalName && !finalEmail && !finalPhone) {
+      if (body.triggerEvent === 'PING' || body.ping || isCalComWebhook) {
+        return NextResponse.json(
+          { success: true, message: 'Cal.com Webhook verified successfully!' },
+          { status: 200, headers: { 'Access-Control-Allow-Origin': '*' } }
+        );
+      }
       return NextResponse.json(
         { error: 'At least Name, Email, or Phone is required.' },
         { status: 400, headers: { 'Access-Control-Allow-Origin': '*' } }

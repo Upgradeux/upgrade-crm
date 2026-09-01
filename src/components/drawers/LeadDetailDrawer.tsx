@@ -40,6 +40,7 @@ export function LeadDetailDrawer() {
     closeLeadDrawer,
     updateLead,
     deleteLead,
+    confirmAction,
     moveLeadStatus,
     bookCall,
     addNote,
@@ -159,7 +160,18 @@ export function LeadDetailDrawer() {
               <Button
                 variant="ghost"
                 size="icon-sm"
-                onClick={() => deleteLead(activeLead.id)}
+                onClick={() => {
+                  confirmAction({
+                    title: 'Delete Lead',
+                    message: `Are you sure you want to delete "${activeLead.companyName}"? This will permanently remove the lead and all associated logs.`,
+                    confirmText: 'Delete Lead',
+                    variant: 'danger',
+                    onConfirm: () => {
+                      deleteLead(activeLead.id);
+                      closeLeadDrawer();
+                    },
+                  });
+                }}
                 title="Delete Lead"
               >
                 <IconTrash size={13} className="text-rose-500" />

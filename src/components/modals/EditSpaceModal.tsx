@@ -24,6 +24,7 @@ export function EditSpaceModal() {
     setEditingSpace,
     updateIndustrySpace,
     deleteIndustrySpace,
+    confirmAction,
   } = useCRM();
 
   const [spaceName, setSpaceName] = useState('');
@@ -50,10 +51,16 @@ export function EditSpaceModal() {
   };
 
   const handleDelete = () => {
-    if (confirm(`Are you sure you want to delete the "${editingSpace.name}" space?`)) {
-      deleteIndustrySpace(editingSpace.id);
-      setEditingSpace(null);
-    }
+    confirmAction({
+      title: 'Delete Industry Space',
+      message: `Are you sure you want to delete "${editingSpace.name}"? Leads in this space will be moved to the General space.`,
+      confirmText: 'Delete Space',
+      variant: 'danger',
+      onConfirm: () => {
+        deleteIndustrySpace(editingSpace.id);
+        setEditingSpace(null);
+      },
+    });
   };
 
   return (

@@ -38,6 +38,7 @@ export function InboundSubmissionsView() {
     convertInboundToLead,
     dismissInboundSubmission,
     deleteInboundSubmission,
+    confirmAction,
     spaces,
     activeSpaceId,
     setWhatsAppLeadModal,
@@ -127,17 +128,17 @@ export function InboundSubmissionsView() {
 
   const formCodeSnippet = `// Direct POST to upgradeUX Inbound API
 async function submitProjectInquiry(data) {
-  const res = await fetch('http://localhost:3000/api/inbound-leads', {
+  const res = await fetch('https://upgradeuxcrm.vercel.app/api/inbound-leads', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       name: data.name,           // "Sarah Jenkins"
       email: data.email,         // "sarah@nexusmedspa.com"
-      phone: data.phone,         // "+1 415-889-2041" (optional)
+      phone: data.phone,         // "+91 98765 43210" (optional)
       interests: data.interests, // ["AI Voice Agent", "Web Development"]
       message: data.message,     // "Project brief..."
-      budget: data.budget,       // "$8,500"
-      deadline: data.deadline,   // "30 Days"
+      budget: data.budget,       // "₹2,50,000" (optional)
+      deadline: data.deadline,   // "Flexible" (optional)
       source: "Website Contact Form"
     })
   });
@@ -640,8 +641,16 @@ async function submitProjectInquiry(data) {
               <button
                 type="button"
                 onClick={() => {
-                  deleteInboundSubmission(viewingSubmission.id);
-                  setViewingSubmission(null);
+                  confirmAction({
+                    title: 'Delete Inbound Submission',
+                    message: `Are you sure you want to delete this submission from "${viewingSubmission.name}"?`,
+                    confirmText: 'Delete Submission',
+                    variant: 'danger',
+                    onConfirm: () => {
+                      deleteInboundSubmission(viewingSubmission.id);
+                      setViewingSubmission(null);
+                    },
+                  });
                 }}
                 className="h-[26px] px-2 rounded-[4px] text-[11px] font-medium text-rose-400 hover:bg-rose-500/10 flex items-center gap-1 transition-colors cursor-pointer"
               >

@@ -19,7 +19,6 @@ import {
   IconRefresh,
   IconEye,
   IconUsers,
-  IconApps,
   IconInbox,
 } from '@tabler/icons-react';
 import { cn, getInitials } from '@/lib/utils';
@@ -113,11 +112,6 @@ export function Sidebar() {
       label: 'Team Members',
       icon: <IconUsers size={15} stroke={1.75} />,
       badge: teamMembers.length,
-    },
-    {
-      id: 'integrations',
-      label: 'App Integrations',
-      icon: <IconApps size={15} stroke={1.75} />,
     },
     {
       id: 'analytics',

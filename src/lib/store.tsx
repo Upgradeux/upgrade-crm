@@ -47,9 +47,10 @@ const DEFAULT_TEAM_MEMBERS: TeamMember[] = [];
 const DEFAULT_INTEGRATIONS: IntegrationsConfig = {
   calComUsername: 'upgradeux',
   googleMeetEnabled: true,
-  googleCalendarEmail: 'meetings@upgradeux.com',
-  emailSyncAddress: 'outreach@upgradeux.com',
-  webhookInboundUrl: 'https://api.upgradeux.com/v1/inbound-leads',
+  googleCalendarEmail: 'upgradeux.agency@gmail.com',
+  emailSyncAddress: 'upgradeux.agency@gmail.com',
+  whatsAppPhone: '+91 8369672169',
+  webhookInboundUrl: 'https://upgradeuxcrm.vercel.app/api/inbound-leads',
 };
 
 interface CRMContextType {
@@ -165,6 +166,26 @@ interface CRMContextType {
   addToast: (message: string, type?: Toast['type']) => void;
   removeToast: (id: string) => void;
 
+  // Confirm Modal
+  confirmModal: {
+    isOpen: boolean;
+    title: string;
+    message: string;
+    confirmText?: string;
+    cancelText?: string;
+    variant?: 'danger' | 'warning' | 'primary';
+    onConfirm: () => void;
+  } | null;
+  confirmAction: (options: {
+    title: string;
+    message: string;
+    confirmText?: string;
+    cancelText?: string;
+    variant?: 'danger' | 'warning' | 'primary';
+    onConfirm: () => void;
+  }) => void;
+  closeConfirmModal: () => void;
+
   // Data Management
   clearAllData: () => void;
 }
@@ -215,7 +236,7 @@ export function CRMProvider({ children }: { children: React.ReactNode }) {
   const [activeLeadId, setActiveLeadId] = useState<string | null>(null);
   const [theme, setTheme] = useState<'dark' | 'light'>('dark');
   const [agencyName, setAgencyNameState] = useState<string>('upgradeUX');
-  const [agencyEmail, setAgencyEmailState] = useState<string>('alex@upgradeux.com');
+  const [agencyEmail, setAgencyEmailState] = useState<string>('upgradeux.agency@gmail.com');
   const [currency, setCurrencyState] = useState<string>('INR (₹)');
   const [timezone, setTimezoneState] = useState<string>('Asia/Kolkata (IST)');
   const [filters, setFilters] = useState<FilterState>(DEFAULT_FILTERS);
@@ -402,6 +423,35 @@ export function CRMProvider({ children }: { children: React.ReactNode }) {
 
   const removeToast = (id: string) => {
     setToasts((prev) => prev.filter((t) => t.id !== id));
+  };
+
+  // Confirm Modal State
+  const [confirmModal, setConfirmModal] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    confirmText?: string;
+    cancelText?: string;
+    variant?: 'danger' | 'warning' | 'primary';
+    onConfirm: () => void;
+  } | null>(null);
+
+  const confirmAction = (options: {
+    title: string;
+    message: string;
+    confirmText?: string;
+    cancelText?: string;
+    variant?: 'danger' | 'warning' | 'primary';
+    onConfirm: () => void;
+  }) => {
+    setConfirmModal({
+      ...options,
+      isOpen: true,
+    });
+  };
+
+  const closeConfirmModal = () => {
+    setConfirmModal((prev) => (prev ? { ...prev, isOpen: false } : null));
   };
 
   // Hydrate from localStorage on mount
@@ -1163,6 +1213,9 @@ export function CRMProvider({ children }: { children: React.ReactNode }) {
         toasts,
         addToast,
         removeToast,
+        confirmModal,
+        confirmAction,
+        closeConfirmModal,
         clearAllData,
       }}
     >

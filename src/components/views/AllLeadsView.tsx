@@ -30,6 +30,7 @@ export function AllLeadsView() {
     leads,
     openLeadDrawer,
     deleteLead,
+    confirmAction,
     setIsNewLeadModalOpen,
     setWhatsAppLeadModal,
     setInstagramDMLeadModal,
@@ -395,8 +396,16 @@ export function AllLeadsView() {
                       </a>
                     )}
                     <button
-                      onClick={() => deleteLead(lead.id)}
-                      className="p-1 text-[var(--t-font-color-tertiary)] hover:text-rose-500 rounded transition-colors opacity-0 group-hover:opacity-100"
+                      onClick={() => {
+                        confirmAction({
+                          title: 'Delete Lead',
+                          message: `Are you sure you want to delete "${lead.companyName}"?`,
+                          confirmText: 'Delete',
+                          variant: 'danger',
+                          onConfirm: () => deleteLead(lead.id),
+                        });
+                      }}
+                      className="p-1 text-[var(--t-font-color-tertiary)] hover:text-rose-500 rounded transition-colors opacity-0 group-hover:opacity-100 cursor-pointer"
                       title="Delete Lead"
                     >
                       <IconTrash size={13} />

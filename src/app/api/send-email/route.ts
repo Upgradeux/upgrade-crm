@@ -31,7 +31,19 @@ export async function POST(req: NextRequest) {
     }
 
     const resendApiKey = process.env.RESEND_API_KEY;
-    const fromEmail = process.env.RESEND_FROM_EMAIL || 'onboarding@resend.dev';
+    let fromEmail = process.env.RESEND_FROM_EMAIL || 'hello@upgradeux.in';
+    
+    // Free webmail providers (gmail/yahoo/outlook) cannot be used as Resend from envelope sender
+    if (
+      fromEmail.toLowerCase().includes('@gmail.') ||
+      fromEmail.toLowerCase().includes('@yahoo.') ||
+      fromEmail.toLowerCase().includes('@outlook.') ||
+      fromEmail.toLowerCase().includes('@hotmail.')
+    ) {
+      fromEmail = 'hello@upgradeux.in';
+    }
+
+    const finalReplyTo = replyTo || 'upgradeux.agency@gmail.com';
 
     // 1. If RESEND_API_KEY is configured, send directly via Resend REST API
     if (resendApiKey) {
@@ -44,7 +56,7 @@ export async function POST(req: NextRequest) {
         body: JSON.stringify({
           from: `${fromName} <${fromEmail}>`,
           to: Array.isArray(to) ? to : [to],
-          reply_to: replyTo || fromEmail,
+          reply_to: finalReplyTo,
           subject: subject,
           text: text,
           html: html || `<p style="font-family: sans-serif; white-space: pre-wrap;">${text}</p>`,

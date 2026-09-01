@@ -56,10 +56,6 @@ export function TopNav() {
       title: 'Team Management & Roles',
       subtitle: 'Assign callers, closers, and developers to client leads',
     },
-    integrations: {
-      title: 'App Integrations & Features',
-      subtitle: 'Connect Cal.com, Google Meet, WhatsApp, Supabase, n8n, and webhooks',
-    },
     analytics: {
       title: `${agencyName} Revenue & Analytics`,
       subtitle: 'Pipeline value, closing win rates, and service breakdowns',

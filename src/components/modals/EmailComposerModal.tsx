@@ -62,6 +62,11 @@ export function EmailComposerModal() {
 
       const data = await res.json();
 
+      if (!res.ok) {
+        addToast(data.error || 'Failed to dispatch email via Resend', 'error');
+        return;
+      }
+
       const now = new Date().toISOString();
       addNote(
         emailComposerLeadModal.id,

@@ -19,6 +19,13 @@ import {
   IconLink,
   IconInfoCircle,
   IconTrash,
+  IconBrandWhatsapp,
+  IconMail,
+  IconCalendar,
+  IconVideo,
+  IconPlug,
+  IconExternalLink,
+  IconSend,
 } from '@tabler/icons-react';
 import { SUPABASE_SQL_SCHEMA } from '@/lib/supabase';
 import { exportLeadsToCsv } from '@/lib/exportCsv';
@@ -41,6 +48,9 @@ export function SettingsView() {
     syncWithCloud,
     leads,
     projects,
+    integrationsConfig,
+    updateIntegrationsConfig,
+    confirmAction,
     clearAllData,
     addToast,
   } = useCRM();
@@ -61,8 +71,13 @@ export function SettingsView() {
     { value: 'Asia/Dubai (GST)', label: 'Asia/Dubai (GST - UAE +4:00)' },
   ];
 
-  const [activeTab, setActiveTab] = useState<'profile' | 'database' | 'appearance' | 'data'>('profile');
+  const [activeTab, setActiveTab] = useState<'profile' | 'integrations' | 'database' | 'appearance' | 'data'>('profile');
+  const [calCom, setCalCom] = useState(integrationsConfig.calComUsername || 'upgradeux');
+  const [googleEmail, setGoogleEmail] = useState(integrationsConfig.googleCalendarEmail || 'upgradeux.agency@gmail.com');
+  const [outreachEmail, setOutreachEmail] = useState(integrationsConfig.emailSyncAddress || 'upgradeux.agency@gmail.com');
+  const [whatsAppPhone, setWhatsAppPhone] = useState(integrationsConfig.whatsAppPhone || '+91 8369672169');
   const [copiedSql, setCopiedSql] = useState(false);
+  const [copiedWebhook, setCopiedWebhook] = useState(false);
 
   const handleSaveProfile = (e: React.FormEvent) => {
     e.preventDefault();
@@ -101,6 +116,7 @@ export function SettingsView() {
         <div className="flex items-center gap-1">
           {[
             { id: 'profile', label: 'Agency Profile', icon: <IconBuilding size={13} /> },
+            { id: 'integrations', label: 'Integrations & Tools', icon: <IconPlug size={13} /> },
             { id: 'database', label: 'Supabase Cloud DB', icon: <IconDatabase size={13} /> },
             { id: 'appearance', label: 'Theme & Display', icon: <IconSun size={13} /> },
             { id: 'data', label: 'Data & Backups', icon: <IconDownload size={13} /> },
@@ -223,7 +239,186 @@ export function SettingsView() {
           </form>
         )}
 
-        {/* Tab 2: Supabase Cloud Database */}
+        {/* Tab: Integrations & Tools */}
+        {activeTab === 'integrations' && (
+          <div className="space-y-3.5">
+            {/* Cal.com Integration Card */}
+            <div className="p-4 rounded-[6px] bg-[var(--t-background-secondary)] border border-[var(--t-border-color-light)] space-y-3">
+              <div className="flex items-center justify-between pb-2 border-b border-[var(--t-border-color-light)]">
+                <div className="flex items-center gap-2">
+                  <div className="w-[28px] h-[28px] rounded-[5px] bg-[#292938] flex items-center justify-center text-white">
+                    <IconCalendar size={15} />
+                  </div>
+                  <div>
+                    <span className="text-[12.5px] font-semibold text-[var(--t-font-color-primary)]">
+                      Cal.com Discovery Booking
+                    </span>
+                    <span className="text-[10.5px] text-[var(--t-font-color-tertiary)] block">
+                      Live discovery demo scheduling & webhook lead intake
+                    </span>
+                  </div>
+                </div>
+
+                <a
+                  href={`https://cal.com/${calCom}`}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="h-[24px] px-2 rounded-[3px] bg-white/5 hover:bg-white/10 text-[11px] text-[var(--t-font-color-secondary)] hover:text-white flex items-center gap-1 border border-[var(--t-border-color-light)] transition-colors"
+                >
+                  <IconExternalLink size={11} />
+                  <span>cal.com/{calCom}</span>
+                </a>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-[10px] font-semibold text-[var(--t-font-color-tertiary)] uppercase tracking-wider block mb-1">
+                    Cal.com Username / Event Slug
+                  </label>
+                  <Input
+                    value={calCom}
+                    onChange={(e) => setCalCom(e.target.value)}
+                    placeholder="e.g. upgradeux"
+                    className="font-mono text-[11.5px] h-[28px]"
+                  />
+                </div>
+
+                <div>
+                  <label className="text-[10px] font-semibold text-[var(--t-font-color-tertiary)] uppercase tracking-wider block mb-1">
+                    Cal.com Webhook Receiver URL
+                  </label>
+                  <div className="flex gap-1.5">
+                    <input
+                      readOnly
+                      value="https://upgradeuxcrm.vercel.app/api/inbound-leads"
+                      className="w-full h-[28px] px-2 rounded-[4px] bg-[var(--t-background-primary)] border border-[var(--t-border-color-light)] text-[11px] font-mono text-[var(--t-font-color-secondary)] truncate"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => {
+                        navigator.clipboard.writeText('https://upgradeuxcrm.vercel.app/api/inbound-leads');
+                        setCopiedWebhook(true);
+                        addToast('Copied Webhook URL to clipboard!', 'success');
+                        setTimeout(() => setCopiedWebhook(false), 2500);
+                      }}
+                      className="h-[28px] px-2.5 rounded-[4px] bg-white/10 hover:bg-white/20 text-white text-[11px] font-mono flex items-center gap-1 shrink-0 cursor-pointer transition-colors"
+                    >
+                      {copiedWebhook ? <IconCheck size={12} className="text-emerald-400" /> : <IconCopy size={12} />}
+                      <span>{copiedWebhook ? 'Copied' : 'Copy'}</span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Resend & Email Outreach Card */}
+            <div className="p-4 rounded-[6px] bg-[var(--t-background-secondary)] border border-[var(--t-border-color-light)] space-y-3">
+              <div className="flex items-center justify-between pb-2 border-b border-[var(--t-border-color-light)]">
+                <div className="flex items-center gap-2">
+                  <div className="w-[28px] h-[28px] rounded-[5px] bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 flex items-center justify-center">
+                    <IconMail size={15} />
+                  </div>
+                  <div>
+                    <span className="text-[12.5px] font-semibold text-[var(--t-font-color-primary)]">
+                      Email Outreach & Follow-Ups
+                    </span>
+                    <span className="text-[10.5px] text-[var(--t-font-color-tertiary)] block">
+                      Powered by Resend API / Direct SMTP dispatch
+                    </span>
+                  </div>
+                </div>
+
+                <span className="h-[20px] px-2 rounded-[3px] bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 text-[10.5px] font-medium flex items-center gap-1 font-mono">
+                  Active
+                </span>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-[10px] font-semibold text-[var(--t-font-color-tertiary)] uppercase tracking-wider block mb-1">
+                    Agency Outreach & Reply-To Email
+                  </label>
+                  <Input
+                    value={outreachEmail}
+                    onChange={(e) => setOutreachEmail(e.target.value)}
+                    placeholder="upgradeux.agency@gmail.com"
+                    className="font-mono text-[11.5px] h-[28px]"
+                  />
+                  <span className="text-[10px] text-[var(--t-font-color-tertiary)] mt-1 block">
+                    Replies from prospective clients will be sent directly to this address.
+                  </span>
+                </div>
+
+                <div>
+                  <label className="text-[10px] font-semibold text-[var(--t-font-color-tertiary)] uppercase tracking-wider block mb-1">
+                    Google Calendar & Meet Account
+                  </label>
+                  <Input
+                    value={googleEmail}
+                    onChange={(e) => setGoogleEmail(e.target.value)}
+                    placeholder="upgradeux.agency@gmail.com"
+                    className="font-mono text-[11.5px] h-[28px]"
+                  />
+                  <span className="text-[10px] text-[var(--t-font-color-tertiary)] mt-1 block">
+                    Account used to host Google Meet video conference calls.
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {/* WhatsApp Outreach Card */}
+            <div className="p-4 rounded-[6px] bg-[var(--t-background-secondary)] border border-[var(--t-border-color-light)] space-y-3">
+              <div className="flex items-center justify-between pb-2 border-b border-[var(--t-border-color-light)]">
+                <div className="flex items-center gap-2">
+                  <div className="w-[28px] h-[28px] rounded-[5px] bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 flex items-center justify-center">
+                    <IconBrandWhatsapp size={15} />
+                  </div>
+                  <div>
+                    <span className="text-[12.5px] font-semibold text-[var(--t-font-color-primary)]">
+                      WhatsApp One-Click Outreach
+                    </span>
+                    <span className="text-[10.5px] text-[var(--t-font-color-tertiary)] block">
+                      Direct click-to-chat messaging via official wa.me protocol
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              <div>
+                <label className="text-[10px] font-semibold text-[var(--t-font-color-tertiary)] uppercase tracking-wider block mb-1">
+                  Agency Sender WhatsApp Number
+                </label>
+                <Input
+                  value={whatsAppPhone}
+                  onChange={(e) => setWhatsAppPhone(e.target.value)}
+                  placeholder="+91 8369672169"
+                  className="font-mono text-[11.5px] max-w-sm h-[28px]"
+                />
+              </div>
+            </div>
+
+            <div className="flex justify-end pt-1">
+              <Button
+                variant="primary"
+                size="sm"
+                onClick={() => {
+                  updateIntegrationsConfig({
+                    calComUsername: calCom,
+                    googleCalendarEmail: googleEmail,
+                    emailSyncAddress: outreachEmail,
+                    whatsAppPhone: whatsAppPhone,
+                  });
+                  setAgencyEmail(outreachEmail);
+                  addToast('Integrations updated and saved!', 'success');
+                }}
+              >
+                Save Integration Settings
+              </Button>
+            </div>
+          </div>
+        )}
+
+        {/* Tab 3: Supabase Cloud Database */}
         {activeTab === 'database' && (
           <div className="space-y-3">
             {/* Connected Clean State */}
@@ -428,9 +623,13 @@ export function SettingsView() {
               <button
                 type="button"
                 onClick={() => {
-                  if (confirm('Are you sure you want to clear all data and start completely fresh?')) {
-                    clearAllData();
-                  }
+                  confirmAction({
+                    title: 'Clear All Workspace Data',
+                    message: 'Are you sure you want to clear all dummy leads and sample projects to start completely fresh? This action cannot be undone.',
+                    confirmText: 'Clear Everything',
+                    variant: 'danger',
+                    onConfirm: () => clearAllData(),
+                  });
                 }}
                 className="h-[28px] px-3 rounded-[4px] bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/30 text-[11px] font-medium transition-colors cursor-pointer"
               >

@@ -17,7 +17,6 @@ import { ProjectsView } from '@/components/views/ProjectsView';
 import { AnalyticsView } from '@/components/views/AnalyticsView';
 import { ClientPortalPreview } from '@/components/views/ClientPortalPreview';
 import { TeamView } from '@/components/views/TeamView';
-import { IntegrationsView } from '@/components/views/IntegrationsView';
 import { SettingsView } from '@/components/views/SettingsView';
 
 // Drawers & Modals
@@ -32,9 +31,10 @@ import { EmailComposerModal } from '@/components/modals/EmailComposerModal';
 import { BookMeetingModal } from '@/components/modals/BookMeetingModal';
 import { CreateSpaceModal } from '@/components/modals/CreateSpaceModal';
 import { EditSpaceModal } from '@/components/modals/EditSpaceModal';
+import { ConfirmModal } from '@/components/ui/ConfirmModal';
 
 function CRMContent() {
-  const { currentView } = useCRM();
+  const { currentView, confirmModal, closeConfirmModal } = useCRM();
 
   return (
     <div className="flex h-screen w-screen overflow-hidden bg-[var(--t-background-primary)] text-[var(--t-font-color-primary)] font-sans">
@@ -56,7 +56,6 @@ function CRMContent() {
           {currentView === 'projects' && <ProjectsView />}
           {currentView === 'client-portal-preview' && <ClientPortalPreview />}
           {currentView === 'team' && <TeamView />}
-          {currentView === 'integrations' && <IntegrationsView />}
           {currentView === 'analytics' && <AnalyticsView />}
           {currentView === 'settings' && <SettingsView />}
         </main>
@@ -74,6 +73,18 @@ function CRMContent() {
       <BookMeetingModal />
       <CreateSpaceModal />
       <EditSpaceModal />
+      {confirmModal && (
+        <ConfirmModal
+          isOpen={confirmModal.isOpen}
+          onClose={closeConfirmModal}
+          onConfirm={confirmModal.onConfirm}
+          title={confirmModal.title}
+          message={confirmModal.message}
+          confirmText={confirmModal.confirmText}
+          cancelText={confirmModal.cancelText}
+          variant={confirmModal.variant}
+        />
+      )}
       <CommandPalette />
       <ToastContainer />
     </div>

@@ -172,7 +172,6 @@ export type CRMView =
   | 'projects'
   | 'client-portal-preview'
   | 'team'
-  | 'integrations'
   | 'settings'
   | 'analytics';
 

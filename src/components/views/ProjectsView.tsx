@@ -30,6 +30,7 @@ export function ProjectsView() {
     projects,
     updateProject,
     deleteProject,
+    confirmAction,
     toggleMilestone,
     addMilestone,
     deleteMilestone,
@@ -376,9 +377,28 @@ export function ProjectsView() {
                 >
                   Share Link
                 </Button>
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  onClick={() => {
+                    confirmAction({
+                      title: 'Delete Project Deliverable',
+                      message: `Are you sure you want to delete "${activeDrawerProject.projectName}" for ${activeDrawerProject.companyName}?`,
+                      confirmText: 'Delete Project',
+                      variant: 'danger',
+                      onConfirm: () => {
+                        deleteProject(activeDrawerProject.id);
+                        setActiveProjectDrawerId(null);
+                      },
+                    });
+                  }}
+                  title="Delete Project"
+                >
+                  <IconTrash size={13} className="text-rose-500" />
+                </Button>
                 <button
                   onClick={() => setActiveProjectDrawerId(null)}
-                  className="w-[24px] h-[24px] rounded-[4px] flex items-center justify-center text-[var(--t-font-color-tertiary)] hover:text-[var(--t-font-color-primary)] p-1"
+                  className="w-[24px] h-[24px] rounded-[4px] flex items-center justify-center text-[var(--t-font-color-tertiary)] hover:text-[var(--t-font-color-primary)] p-1 cursor-pointer"
                 >
                   <IconX size={15} />
                 </button>

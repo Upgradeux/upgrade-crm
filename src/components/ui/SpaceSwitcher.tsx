@@ -26,6 +26,7 @@ export function SpaceSwitcher() {
     deleteIndustrySpace,
     setEditingSpace,
     setIsCreateSpaceModalOpen,
+    confirmAction,
     allLeads,
   } = useCRM();
 
@@ -152,9 +153,13 @@ export function SpaceSwitcher() {
                         type="button"
                         onClick={(e) => {
                           e.stopPropagation();
-                          if (confirm(`Delete the "${space.name}" industry space?`)) {
-                            deleteIndustrySpace(space.id);
-                          }
+                          confirmAction({
+                            title: 'Delete Industry Space',
+                            message: `Are you sure you want to delete "${space.name}"? Leads in this space will be moved to the General workspace.`,
+                            confirmText: 'Delete Space',
+                            variant: 'danger',
+                            onConfirm: () => deleteIndustrySpace(space.id),
+                          });
                         }}
                         className="hidden group-hover:flex p-1 rounded text-[var(--t-font-color-tertiary)] hover:text-rose-400 hover:bg-rose-500/10 transition-all cursor-pointer"
                         title="Delete space"

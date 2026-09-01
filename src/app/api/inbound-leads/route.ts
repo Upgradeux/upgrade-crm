@@ -29,14 +29,84 @@ export async function POST(req: NextRequest) {
     let meetingDate: string | undefined = undefined;
 
     if (isCalComWebhook) {
-      const p = body.payload;
+      const p = body.payload || {};
       const attendee = p.attendees?.[0] || {};
       finalName = attendee.name || p.title || 'Cal.com Client';
       finalEmail = attendee.email || '';
-      finalPhone = p.responses?.phone || '';
+      
+      // Extract phone from responses if present
+      finalPhone =
+        (typeof p.responses?.phone === 'object' ? p.responses.phone.value : p.responses?.phone) ||
+        (typeof p.responses?.phoneNumber === 'object' ? p.responses.phoneNumber.value : p.responses?.phoneNumber) ||
+        '';
       meetingDate = p.startTime;
-      finalMessage = `Cal.com Discovery Booking scheduled for ${new Date(p.startTime).toLocaleString('en-US')}. Meeting Link: ${p.metadata?.videoCallUrl || 'Google Meet'}\nNotes: ${p.description || p.responses?.notes || 'None'}`;
-      interestList = ['Discovery Demo Call', 'Full Package'];
+
+      const meetingLink = p.metadata?.videoCallUrl || p.videoCallUrl || p.location || 'Google Meet';
+      const eventTitle = p.eventTitle || p.title || 'Book a Discovery Call';
+      const formattedTime = p.startTime
+        ? new Date(p.startTime).toLocaleString('en-US', {
+            dateStyle: 'medium',
+            timeStyle: 'short',
+          })
+        : 'Scheduled';
+
+      // Parse custom answers (e.g. "What is this meeting about?", "Additional notes", etc.)
+      const customAnswers: string[] = [];
+
+      if (p.responses && typeof p.responses === 'object') {
+        for (const [key, val] of Object.entries(p.responses)) {
+          // Skip standard fields like name/email/phone that are already captured
+          if (['name', 'email', 'phone', 'guests', 'rescheduleReason'].includes(key.toLowerCase())) continue;
+
+          let label = key;
+          let value: any = val;
+
+          if (val && typeof val === 'object' && 'value' in (val as any)) {
+            label = (val as any).label || key;
+            value = (val as any).value;
+          }
+
+          if (value && typeof value === 'string' && value.trim()) {
+            // Humanize label if it's a slug like "what-is-this-meeting-about"
+            const cleanLabel = label.includes('-')
+              ? label
+                  .split('-')
+                  .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+                  .join(' ')
+              : label;
+            customAnswers.push(`${cleanLabel}: ${value.trim()}`);
+          }
+        }
+      }
+
+      // Check customInputs array if present
+      if (Array.isArray(p.customInputs)) {
+        for (const input of p.customInputs) {
+          if (input?.label && input?.value) {
+            customAnswers.push(`${input.label}: ${input.value}`);
+          }
+        }
+      }
+
+      // Build clean message with client responses
+      const messageLines: string[] = [];
+      messageLines.push(`📅 Event: ${eventTitle}`);
+      messageLines.push(`⏰ Scheduled for: ${formattedTime}`);
+      if (meetingLink) {
+        messageLines.push(`🔗 Meeting Link: ${meetingLink}`);
+      }
+
+      if (customAnswers.length > 0) {
+        messageLines.push('');
+        messageLines.push('📝 Client Responses:');
+        messageLines.push(...customAnswers.map((a) => `• ${a}`));
+      } else if (p.description) {
+        messageLines.push('');
+        messageLines.push(`Notes: ${p.description}`);
+      }
+
+      finalMessage = messageLines.join('\n');
+      interestList = [eventTitle];
       source = 'Cal.com Booking';
     } else {
       // Standard Website Form Payload

@@ -5,6 +5,7 @@ import { useCRM } from '@/lib/store';
 import { Lead, LeadStatus } from '@/types/crm';
 import { Badge } from '../ui/Badge';
 import { formatCurrency, formatDate } from '@/lib/utils';
+import { IconVideo } from '@tabler/icons-react';
 
 const COLUMNS: Array<{ status: LeadStatus; label: string; dotColor: string }> = [
   { status: 'Not Contacted', label: 'Not Contacted', dotColor: 'bg-amber-500' },
@@ -127,7 +128,22 @@ export function PipelineView() {
                     <span className="truncate max-w-[120px]">
                       {lead.contactName || lead.location}
                     </span>
-                    <span className="font-mono">{formatDate(lead.createdAt, timezone)}</span>
+
+                    {(lead.status === 'Booked Call' || lead.googleMeetLink) ? (
+                      <a
+                        href={lead.googleMeetLink || 'https://meet.google.com/oic-saem-syo'}
+                        target="_blank"
+                        rel="noreferrer"
+                        onClick={(e) => e.stopPropagation()}
+                        className="px-1.5 py-0.5 rounded-[3px] bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/30 text-emerald-400 font-semibold text-[9.5px] flex items-center gap-1 transition-colors"
+                        title="Join Google Meet Room"
+                      >
+                        <IconVideo size={10} />
+                        <span>Join Meet</span>
+                      </a>
+                    ) : (
+                      <span className="font-mono">{formatDate(lead.createdAt, timezone)}</span>
+                    )}
                   </div>
                 </div>
               ))}

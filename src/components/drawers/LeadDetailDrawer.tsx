@@ -275,6 +275,68 @@ export function LeadDetailDrawer() {
           </div>
         </div>
 
+        {/* Active Scheduled Meeting Banner with Direct Join and Cancel Options */}
+        {(activeLead.status === 'Booked Call' || activeLead.googleMeetLink || activeLead.bookedMeetingDate) && (
+          <div className="px-3.5 py-2.5 bg-emerald-500/10 border-b border-emerald-500/25 flex items-center justify-between gap-2 shrink-0">
+            <div className="flex items-center gap-2 min-w-0">
+              <div className="w-[26px] h-[26px] rounded-[5px] bg-emerald-500/20 text-emerald-400 flex items-center justify-center shrink-0 border border-emerald-500/30">
+                <IconVideo size={14} />
+              </div>
+              <div className="min-w-0">
+                <div className="flex items-center gap-1.5 leading-tight">
+                  <span className="text-[11.5px] font-bold text-[var(--t-font-color-primary)]">
+                    Confirmed Google Meet
+                  </span>
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                </div>
+                <div className="text-[10px] text-[var(--t-font-color-secondary)] font-mono truncate">
+                  {activeLead.bookedMeetingDate ? formatDate(activeLead.bookedMeetingDate, timezone) : 'Scheduled Call'}
+                </div>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-1.5 shrink-0">
+              {/* Join Meeting Button */}
+              <a
+                href={activeLead.googleMeetLink || 'https://meet.google.com/oic-saem-syo'}
+                target="_blank"
+                rel="noreferrer"
+                className="h-[26px] px-2.5 rounded-[4px] bg-emerald-600 hover:bg-emerald-500 text-white text-[11px] font-semibold flex items-center gap-1 shadow-sm transition-all cursor-pointer"
+              >
+                <IconVideo size={12} />
+                <span>Join Meeting</span>
+              </a>
+
+              {/* Cancel / Delete Meeting Button */}
+              <button
+                onClick={() => {
+                  confirmAction({
+                    title: 'Cancel Scheduled Meeting',
+                    message: `Cancel the scheduled meeting with ${activeLead.companyName}? This will reset the meeting status back to Contacted.`,
+                    confirmText: 'Cancel Meeting',
+                    variant: 'danger',
+                    onConfirm: () => {
+                      updateLead(activeLead.id, {
+                        bookedMeetingDate: undefined,
+                        googleMeetLink: undefined,
+                        status: 'Contacted',
+                        outreachStage: 'Contacted',
+                      });
+                      addNote(activeLead.id, 'Cancelled scheduled Google Meet.', 'system');
+                      addToast(`Meeting cancelled for ${activeLead.companyName}`, 'info');
+                    },
+                  });
+                }}
+                className="h-[26px] px-2 rounded-[4px] bg-[var(--t-background-primary)] hover:bg-rose-500/15 border border-[var(--t-border-color-medium)] hover:border-rose-500/30 text-[var(--t-font-color-tertiary)] hover:text-rose-400 text-[10.5px] font-medium flex items-center gap-1 transition-colors cursor-pointer"
+                title="Cancel and remove scheduled meeting"
+              >
+                <IconX size={11} />
+                <span>Cancel</span>
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* High-Density Action & Outreach Toolbar */}
         <div className="px-3.5 py-2 bg-[var(--t-background-transparent-lighter)] border-b border-[var(--t-border-color-light)] space-y-2 shrink-0">
           {/* Main Direct Actions (Google Meet, Email, WhatsApp, Instagram DM) */}

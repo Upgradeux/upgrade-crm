@@ -1,0 +1,189 @@
+@import "tailwindcss";
+
+/* ==========================================================================
+   TWENTY CRM — MASTER MINIMAL DESIGN TOKENS
+   Base Font Size: 13px | Font Family: Inter | Grid: 4px
+   True Twenty CRM Monochrome Neutrals & Display-P3 Grayscale
+   ========================================================================== */
+
+:root {
+  /* --- Typography --- */
+  --t-font-family: var(--font-inter, 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif);
+  --t-font-size-xxs: 0.625rem; /* ~8px */
+  --t-font-size-xs: 0.846rem;  /* ~11px */
+  --t-font-size-sm: 0.923rem;  /* ~12px */
+  --t-font-size-md: 1rem;      /* 13px (Twenty Base) */
+  --t-font-size-lg: 1.231rem;  /* ~16px */
+  --t-font-size-xl: 1.538rem;  /* ~20px */
+  --t-font-size-xxl: 1.846rem; /* ~24px */
+  --t-font-weight-regular: 400;
+  --t-font-weight-medium: 500;
+  --t-font-weight-semibold: 600;
+
+  /* --- Spacing Scale (4px Multiplier) --- */
+  --t-spacing-0-5: 2px;
+  --t-spacing-1: 4px;
+  --t-spacing-2: 8px;
+  --t-spacing-3: 12px;
+  --t-spacing-4: 16px;
+  --t-spacing-5: 20px;
+  --t-spacing-6: 24px;
+  --t-spacing-8: 32px;
+
+  /* --- Border Radius --- */
+  --t-border-radius-xs: 2px;
+  --t-border-radius-sm: 4px;
+  --t-border-radius-md: 8px;
+  --t-border-radius-lg: 12px;
+  --t-border-radius-pill: 999px;
+
+  /* --- Component Standard Heights --- */
+  --t-height-button-sm: 24px;
+  --t-height-button-md: 32px;
+  --t-height-input: 32px;
+  --t-height-tag: 20px;
+
+  /* --- Default to DARK THEME (Twenty CRM Charcoal Dark) --- */
+  --t-background-primary: #171717;
+  --t-background-secondary: #1b1b1b;
+  --t-background-tertiary: #202020;
+  --t-background-quaternary: #262626;
+  --t-background-inverted: #f5f5f5;
+  --t-background-transparent-lighter: rgba(255, 255, 255, 0.03);
+  --t-background-transparent-light: rgba(255, 255, 255, 0.06);
+  --t-background-transparent-medium: rgba(255, 255, 255, 0.1);
+
+  --t-font-color-primary: #f5f5f5;
+  --t-font-color-secondary: #a3a3a3;
+  --t-font-color-tertiary: #737373;
+  --t-font-color-light: #525252;
+  --t-font-color-inverted: #171717;
+
+  --t-border-color-light: #262626;
+  --t-border-color-medium: #333333;
+  --t-border-color-strong: #404040;
+  --t-border-color-focus: #f5f5f5;
+
+  /* Primary Button (In Dark Mode: Neutral-50 #f5f5f5 background, Neutral-950 #171717 text) */
+  --t-btn-primary-bg: #f5f5f5;
+  --t-btn-primary-text: #171717;
+  --t-btn-primary-hover: #ffffff;
+
+  --t-color-danger: #ef4444;
+  --t-color-danger-subtle: rgba(239, 68, 68, 0.1);
+  --t-color-success: #22c55e;
+  --t-color-success-subtle: rgba(34, 197, 94, 0.1);
+  --t-color-warning: #f59e0b;
+  --t-color-warning-subtle: rgba(245, 158, 11, 0.1);
+
+  --t-shadow-light: 0px 1px 2px 0px rgba(0, 0, 0, 0.2);
+  --t-shadow-medium: 0px 4px 12px 0px rgba(0, 0, 0, 0.35);
+}
+
+/* ==========================================================================
+   LIGHT THEME (Twenty CRM Clean White / Neutral-900 Primary)
+   ========================================================================== */
+[data-theme='light'] {
+  --t-background-primary: #ffffff;
+  --t-background-secondary: #fafafa;
+  --t-background-tertiary: #f4f4f5;
+  --t-background-quaternary: #e4e4e7;
+  --t-background-inverted: #18181b;
+  --t-background-transparent-lighter: rgba(0, 0, 0, 0.02);
+  --t-background-transparent-light: rgba(0, 0, 0, 0.04);
+  --t-background-transparent-medium: rgba(0, 0, 0, 0.08);
+
+  --t-font-color-primary: #18181b;
+  --t-font-color-secondary: #52525b;
+  --t-font-color-tertiary: #a1a1aa;
+  --t-font-color-light: #d4d4d8;
+  --t-font-color-inverted: #ffffff;
+
+  --t-border-color-light: #f4f4f5;
+  --t-border-color-medium: #e4e4e7;
+  --t-border-color-strong: #d4d4d8;
+  --t-border-color-focus: #18181b;
+
+  /* Primary Button (In Light Mode: Neutral-900 #18181b background, Neutral-50 #ffffff text) */
+  --t-btn-primary-bg: #18181b;
+  --t-btn-primary-text: #ffffff;
+  --t-btn-primary-hover: #27272a;
+
+  --t-color-danger: #ef4444;
+  --t-color-danger-subtle: #fef2f2;
+  --t-color-success: #16a34a;
+  --t-color-success-subtle: #f0fdf4;
+  --t-color-warning: #d97706;
+  --t-color-warning-subtle: #fffbeb;
+
+  --t-shadow-light: 0px 1px 2px 0px rgba(0, 0, 0, 0.04);
+  --t-shadow-medium: 0px 4px 12px 0px rgba(0, 0, 0, 0.06);
+}
+
+/* ==========================================================================
+   GLOBAL RESET & TYPOGRAPHY
+   ========================================================================== */
+html {
+  font-size: 13px !important;
+  line-height: 1.45;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  font-family: var(--t-font-family);
+  background-color: var(--t-background-primary);
+  color: var(--t-font-color-primary);
+  font-size: var(--t-font-size-md);
+  font-weight: var(--t-font-weight-regular);
+  overflow-x: hidden;
+  height: 100vh;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+/* Custom Twenty Scrollbar */
+::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--t-border-color-strong);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--t-font-color-tertiary);
+}
+
+button, a, input, select, textarea {
+  font-family: inherit;
+  transition: background-color 0.1s ease, border-color 0.1s ease, color 0.1s ease;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: scale(0.99); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+@keyframes slideInRight {
+  from { transform: translateX(100%); }
+  to { transform: translateX(0); }
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.12s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.animate-slide-right {
+  animation: slideInRight 0.18s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}

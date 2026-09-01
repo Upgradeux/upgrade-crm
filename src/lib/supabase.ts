@@ -451,6 +451,52 @@ export async function clearAllInboundSubmissionsFromSupabase(
   }
 }
 
+export async function deleteLeadFromSupabase(
+  id: string,
+  config: { url: string; anonKey: string }
+): Promise<boolean> {
+  if (!config.url || !config.anonKey) return false;
+  try {
+    const cleanUrl = config.url.replace(/\/+$/, '');
+    const validId = ensureValidUuid(id);
+    const res = await fetch(`${cleanUrl}/rest/v1/leads?id=eq.${encodeURIComponent(validId)}`, {
+      method: 'DELETE',
+      headers: {
+        apikey: config.anonKey,
+        Authorization: `Bearer ${config.anonKey}`,
+      },
+    });
+
+    return res.ok;
+  } catch (e) {
+    console.error('Failed to delete lead from Supabase:', e);
+    return false;
+  }
+}
+
+export async function deleteProjectFromSupabase(
+  id: string,
+  config: { url: string; anonKey: string }
+): Promise<boolean> {
+  if (!config.url || !config.anonKey) return false;
+  try {
+    const cleanUrl = config.url.replace(/\/+$/, '');
+    const validId = ensureValidUuid(id);
+    const res = await fetch(`${cleanUrl}/rest/v1/projects?id=eq.${encodeURIComponent(validId)}`, {
+      method: 'DELETE',
+      headers: {
+        apikey: config.anonKey,
+        Authorization: `Bearer ${config.anonKey}`,
+      },
+    });
+
+    return res.ok;
+  } catch (e) {
+    console.error('Failed to delete project from Supabase:', e);
+    return false;
+  }
+}
+
 export async function clearAllSupabaseTables(
   config: { url: string; anonKey: string }
 ): Promise<boolean> {

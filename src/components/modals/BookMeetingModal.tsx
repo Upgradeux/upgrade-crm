@@ -30,7 +30,9 @@ export function BookMeetingModal() {
   } = useCRM();
 
   const [dateTime, setDateTime] = useState('');
-  const [meetLink, setMeetLink] = useState(integrationsConfig.defaultGoogleMeetUrl || 'https://meet.google.com/new');
+  const [meetLink, setMeetLink] = useState(
+    integrationsConfig.defaultGoogleMeetUrl || 'https://meet.google.com/oic-saem-syo'
+  );
   const [durationMinutes, setDurationMinutes] = useState(30);
   const [sendEmailInvite, setSendEmailInvite] = useState(true);
   const [openGcalTab, setOpenGcalTab] = useState(false);

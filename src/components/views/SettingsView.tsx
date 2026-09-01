@@ -73,7 +73,7 @@ export function SettingsView() {
 
   const [activeTab, setActiveTab] = useState<'profile' | 'integrations' | 'database' | 'appearance' | 'data'>('profile');
   const [calCom, setCalCom] = useState(integrationsConfig.calComUsername || 'upgradeux');
-  const [defaultMeetUrl, setDefaultMeetUrl] = useState(integrationsConfig.defaultGoogleMeetUrl || '');
+  const [defaultMeetUrl, setDefaultMeetUrl] = useState(integrationsConfig.defaultGoogleMeetUrl || 'https://meet.google.com/oic-saem-syo');
   const [googleEmail, setGoogleEmail] = useState(integrationsConfig.googleCalendarEmail || 'upgradeux.agency@gmail.com');
   const [outreachEmail, setOutreachEmail] = useState(integrationsConfig.emailSyncAddress || 'upgradeux.agency@gmail.com');
   const [whatsAppPhone, setWhatsAppPhone] = useState(integrationsConfig.whatsAppPhone || '+91 8369672169');

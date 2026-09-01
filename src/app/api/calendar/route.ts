@@ -40,7 +40,7 @@ export async function POST(req: NextRequest) {
     const startDateTime = new Date(`${date}T${time}:00`);
     const endDateTime = new Date(startDateTime.getTime() + 30 * 60000); // 30 mins
 
-    const meetUrl = providedMeetUrl && providedMeetUrl.trim() ? providedMeetUrl.trim() : `https://meet.google.com/new`;
+    const meetUrl = providedMeetUrl && providedMeetUrl.trim() ? providedMeetUrl.trim() : `https://meet.google.com/oic-saem-syo`;
     const meetCode = meetUrl.split('/').pop() || 'meet';
 
     // If Google Calendar Service Account credentials exist in env

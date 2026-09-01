@@ -36,6 +36,8 @@ import {
   fetchInboundSubmissionsFromSupabase,
   updateInboundSubmissionInSupabase,
   deleteInboundSubmissionFromSupabase,
+  deleteLeadFromSupabase,
+  deleteProjectFromSupabase,
   clearAllInboundSubmissionsFromSupabase,
   clearAllSupabaseTables,
 } from './supabase';
@@ -51,6 +53,7 @@ const DEFAULT_TEAM_MEMBERS: TeamMember[] = [];
 const DEFAULT_INTEGRATIONS: IntegrationsConfig = {
   calComUsername: 'upgradeux',
   googleMeetEnabled: true,
+  defaultGoogleMeetUrl: 'https://meet.google.com/oic-saem-syo',
   googleCalendarEmail: 'upgradeux.agency@gmail.com',
   emailSyncAddress: 'upgradeux.agency@gmail.com',
   whatsAppPhone: '+91 8369672169',
@@ -808,20 +811,32 @@ export function CRMProvider({ children }: { children: React.ReactNode }) {
 
     setRawLeads((prev) => [newLead, ...prev]);
     addToast(`Added prospect: ${newLead.companyName}`, 'success');
+
+    const envUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || supabaseConfig.url;
+    const envKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || supabaseConfig.anonKey;
+    if (envUrl && envKey) {
+      syncLeadsToSupabase([newLead, ...rawLeads], { url: envUrl, anonKey: envKey, isConnected: true });
+    }
+
     return newLead;
   };
 
   const updateLead = (id: string, updates: Partial<Lead>) => {
-    setRawLeads((prev) =>
-      prev.map((lead) => {
-        if (lead.id !== id) return lead;
-        return {
-          ...lead,
-          ...updates,
-          updatedAt: new Date().toISOString(),
-        };
-      })
-    );
+    const updatedLeads = rawLeads.map((lead) => {
+      if (lead.id !== id) return lead;
+      return {
+        ...lead,
+        ...updates,
+        updatedAt: new Date().toISOString(),
+      };
+    });
+    setRawLeads(updatedLeads);
+
+    const envUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || supabaseConfig.url;
+    const envKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || supabaseConfig.anonKey;
+    if (envUrl && envKey) {
+      syncLeadsToSupabase(updatedLeads, { url: envUrl, anonKey: envKey, isConnected: true });
+    }
   };
 
   const deleteLead = (id: string) => {
@@ -829,6 +844,12 @@ export function CRMProvider({ children }: { children: React.ReactNode }) {
     setRawLeads((prev) => prev.filter((l) => l.id !== id));
     if (activeLeadId === id) setActiveLeadId(null);
     addToast(`Deleted ${lead?.companyName || 'lead'}`, 'info');
+
+    const envUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || supabaseConfig.url;
+    const envKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || supabaseConfig.anonKey;
+    if (envUrl && envKey) {
+      deleteLeadFromSupabase(id, { url: envUrl, anonKey: envKey });
+    }
   };
 
   const moveLeadStatus = (id: string, status: LeadStatus) => {
@@ -995,26 +1016,44 @@ export function CRMProvider({ children }: { children: React.ReactNode }) {
     setRawProjects((prev) => [newProject, ...prev]);
     triggerConfetti();
     addToast(`Created deliverable "${newProject.projectName}"`, 'success');
+
+    const envUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || supabaseConfig.url;
+    const envKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || supabaseConfig.anonKey;
+    if (envUrl && envKey) {
+      syncProjectsToSupabase([newProject, ...rawProjects], { url: envUrl, anonKey: envKey, isConnected: true });
+    }
+
     return newProject;
   };
 
   const updateProject = (id: string, updates: Partial<Project>) => {
-    setRawProjects((prev) =>
-      prev.map((proj) => {
-        if (proj.id !== id) return proj;
-        return {
-          ...proj,
-          ...updates,
-          updatedAt: new Date().toISOString(),
-        };
-      })
-    );
+    const updatedProjects = rawProjects.map((proj) => {
+      if (proj.id !== id) return proj;
+      return {
+        ...proj,
+        ...updates,
+        updatedAt: new Date().toISOString(),
+      };
+    });
+    setRawProjects(updatedProjects);
+
+    const envUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || supabaseConfig.url;
+    const envKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || supabaseConfig.anonKey;
+    if (envUrl && envKey) {
+      syncProjectsToSupabase(updatedProjects, { url: envUrl, anonKey: envKey, isConnected: true });
+    }
   };
 
   const deleteProject = (id: string) => {
     const proj = rawProjects.find((p) => p.id === id);
     setRawProjects((prev) => prev.filter((p) => p.id !== id));
     addToast(`Deleted deliverable "${proj?.projectName || ''}"`, 'info');
+
+    const envUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || supabaseConfig.url;
+    const envKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || supabaseConfig.anonKey;
+    if (envUrl && envKey) {
+      deleteProjectFromSupabase(id, { url: envUrl, anonKey: envKey });
+    }
   };
 
   const toggleMilestone = (projectId: string, milestoneId: string) => {
@@ -1111,7 +1150,7 @@ export function CRMProvider({ children }: { children: React.ReactNode }) {
     const primaryInterest = sub.interests[0] || 'Web Development';
 
     const newLead: Lead = {
-      id: `lead_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+      id: generateUUID(),
       companyName: sub.name,
       contactName: sub.name,
       email: sub.email,
@@ -1128,7 +1167,7 @@ export function CRMProvider({ children }: { children: React.ReactNode }) {
       industrySpaceId: targetSpaceId || (activeSpaceId !== 'all' ? activeSpaceId : undefined),
       notes: [
         {
-          id: `note_${Date.now()}`,
+          id: generateUUID(),
           content: `Inbound Form Submission (${sub.source}):\nInterests: ${sub.interests.join(', ') || 'N/A'}\nMessage / Project Brief: ${sub.message || 'None provided'}${sub.budget ? `\nBudget: ${sub.budget}` : ''}${sub.deadline ? `\nDeadline: ${sub.deadline}` : ''}`,
           createdAt: new Date().toISOString(),
           author: 'Website Form',

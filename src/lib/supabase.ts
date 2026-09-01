@@ -119,12 +119,27 @@ export async function testSupabaseConnection(url: string, anonKey: string): Prom
   }
 }
 
+export function ensureValidUuid(id: string): string {
+  if (!id) return '00000000-0000-4000-8000-000000000000';
+  if (/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id)) {
+    return id;
+  }
+  let hash = 0;
+  for (let i = 0; i < id.length; i++) {
+    hash = ((hash << 5) - hash) + id.charCodeAt(i);
+    hash |= 0;
+  }
+  const hex = Math.abs(hash).toString(16).padStart(8, '0');
+  return `00000000-0000-4000-8000-${hex.padStart(12, '0')}`;
+}
+
 export async function syncLeadsToSupabase(leads: Lead[], config: SupabaseConfig): Promise<boolean> {
   if (!config.isConnected || !config.url || !config.anonKey) return false;
+  if (leads.length === 0) return true;
   try {
     const cleanUrl = config.url.replace(/\/+$/, '');
-    const formatted = leads.map(l => ({
-      id: l.id,
+    const formatted = leads.map((l) => ({
+      id: ensureValidUuid(l.id),
       company_name: l.companyName,
       contact_name: l.contactName || null,
       website_url: l.websiteUrl || null,
@@ -196,6 +211,94 @@ export async function fetchLeadsFromSupabase(config: SupabaseConfig): Promise<Le
     }));
   } catch (e) {
     console.error('Failed to fetch from Supabase:', e);
+    return null;
+  }
+}
+
+export async function syncProjectsToSupabase(projects: Project[], config: SupabaseConfig): Promise<boolean> {
+  if (!config.isConnected || !config.url || !config.anonKey) return false;
+  if (projects.length === 0) return true;
+  try {
+    const cleanUrl = config.url.replace(/\/+$/, '');
+    const formatted = projects.map((p) => ({
+      id: ensureValidUuid(p.id),
+      company_id: p.companyId || null,
+      company_name: p.companyName,
+      project_name: p.projectName,
+      service_type: p.serviceType,
+      status: p.status,
+      progress_percent: p.progressPercent || 0,
+      milestones: p.milestones || [],
+      budget: p.budget || 0,
+      start_date: p.startDate,
+      target_delivery_date: p.targetDeliveryDate || null,
+      repo_url: p.repoUrl || null,
+      figma_url: p.figmaUrl || null,
+      live_url: p.liveUrl || null,
+      client_access_key: p.clientAccessKey || null,
+      client_notes: p.clientNotes || null,
+      industry: p.industry || null,
+      industry_space_id: p.industrySpaceId || null,
+      created_at: p.createdAt,
+      updated_at: new Date().toISOString(),
+    }));
+
+    const res = await fetch(`${cleanUrl}/rest/v1/projects`, {
+      method: 'POST',
+      headers: {
+        apikey: config.anonKey,
+        Authorization: `Bearer ${config.anonKey}`,
+        'Content-Type': 'application/json',
+        Prefer: 'resolution=merge-duplicates',
+      },
+      body: JSON.stringify(formatted),
+    });
+
+    return res.ok;
+  } catch (e) {
+    console.error('Failed to sync projects to Supabase:', e);
+    return false;
+  }
+}
+
+export async function fetchProjectsFromSupabase(config: SupabaseConfig): Promise<Project[] | null> {
+  if (!config.isConnected || !config.url || !config.anonKey) return null;
+  try {
+    const cleanUrl = config.url.replace(/\/+$/, '');
+    const res = await fetch(`${cleanUrl}/rest/v1/projects?select=*&order=created_at.desc`, {
+      method: 'GET',
+      headers: {
+        apikey: config.anonKey,
+        Authorization: `Bearer ${config.anonKey}`,
+      },
+    });
+
+    if (!res.ok) return null;
+    const data = await res.json();
+    return data.map((d: any) => ({
+      id: d.id,
+      companyId: d.company_id || '',
+      companyName: d.company_name,
+      projectName: d.project_name,
+      serviceType: d.service_type,
+      status: d.status,
+      progressPercent: Number(d.progress_percent) || 0,
+      milestones: d.milestones || [],
+      budget: Number(d.budget) || 0,
+      startDate: d.start_date,
+      targetDeliveryDate: d.target_delivery_date || '',
+      repoUrl: d.repo_url || '',
+      figmaUrl: d.figma_url || '',
+      liveUrl: d.live_url || '',
+      clientAccessKey: d.client_access_key || '',
+      clientNotes: d.client_notes || '',
+      industry: d.industry || 'General',
+      industrySpaceId: d.industry_space_id || 'all',
+      createdAt: d.created_at,
+      updatedAt: d.updated_at,
+    }));
+  } catch (e) {
+    console.error('Failed to fetch projects from Supabase:', e);
     return null;
   }
 }

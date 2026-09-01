@@ -31,6 +31,8 @@ import { triggerConfetti } from './confetti';
 import {
   syncLeadsToSupabase,
   fetchLeadsFromSupabase,
+  syncProjectsToSupabase,
+  fetchProjectsFromSupabase,
   fetchInboundSubmissionsFromSupabase,
   updateInboundSubmissionInSupabase,
   deleteInboundSubmissionFromSupabase,
@@ -584,13 +586,18 @@ export function CRMProvider({ children }: { children: React.ReactNode }) {
       if (envUrl && envKey) {
         try {
           const config = { url: envUrl, anonKey: envKey, isConnected: true };
-          const [remoteLeads, remoteInbound] = await Promise.all([
+          const [remoteLeads, remoteInbound, remoteProjects] = await Promise.all([
             fetchLeadsFromSupabase(config),
             fetchInboundSubmissionsFromSupabase(config),
+            fetchProjectsFromSupabase(config),
           ]);
 
           if (remoteLeads && remoteLeads.length > 0) {
             setRawLeads(remoteLeads);
+          }
+
+          if (remoteProjects && remoteProjects.length > 0) {
+            setRawProjects(remoteProjects);
           }
 
           if (remoteInbound) {
@@ -693,15 +700,26 @@ export function CRMProvider({ children }: { children: React.ReactNode }) {
     addToast('Syncing with Supabase Cloud database...', 'info');
 
     try {
-      const pushOk = await syncLeadsToSupabase(rawLeads, activeConfig);
-      if (pushOk) {
-        const [remoteLeads, remoteInbound] = await Promise.all([
+      const [leadsOk, projectsOk] = await Promise.all([
+        syncLeadsToSupabase(rawLeads, activeConfig),
+        syncProjectsToSupabase(rawProjects, activeConfig),
+      ]);
+
+      if (leadsOk && projectsOk) {
+        const [remoteLeads, remoteInbound, remoteProjects] = await Promise.all([
           fetchLeadsFromSupabase(activeConfig),
           fetchInboundSubmissionsFromSupabase(activeConfig),
+          fetchProjectsFromSupabase(activeConfig),
         ]);
+
         if (remoteLeads && remoteLeads.length > 0) {
           setRawLeads(remoteLeads);
         }
+
+        if (remoteProjects && remoteProjects.length > 0) {
+          setRawProjects(remoteProjects);
+        }
+
         if (remoteInbound) {
           setInboundSubmissions((prev) => {
             const existingIds = new Set(remoteInbound.map((s) => s.id));

@@ -20,6 +20,7 @@ import {
   IconEye,
   IconUsers,
   IconInbox,
+  IconLogout,
 } from '@tabler/icons-react';
 import { cn, getInitials } from '@/lib/utils';
 import { Button } from '../ui/Button';
@@ -40,6 +41,7 @@ export function Sidebar() {
     supabaseConfig,
     isSyncing,
     syncWithCloud,
+    logout,
   } = useCRM();
 
   // Calculate live badge counts
@@ -262,13 +264,23 @@ export function Sidebar() {
             </div>
           </div>
 
-          <button
-            onClick={toggleTheme}
-            title={`Switch to ${theme === 'dark' ? 'Light' : 'Dark'} mode`}
-            className="w-[24px] h-[24px] rounded-[4px] flex items-center justify-center text-[var(--t-font-color-tertiary)] hover:text-[var(--t-font-color-primary)] hover:bg-[var(--t-background-transparent-light)] transition-colors cursor-pointer"
-          >
-            {theme === 'dark' ? <IconSun size={13} /> : <IconMoon size={13} />}
-          </button>
+          <div className="flex items-center gap-0.5">
+            <button
+              onClick={toggleTheme}
+              title={`Switch to ${theme === 'dark' ? 'Light' : 'Dark'} mode`}
+              className="w-[24px] h-[24px] rounded-[4px] flex items-center justify-center text-[var(--t-font-color-tertiary)] hover:text-[var(--t-font-color-primary)] hover:bg-[var(--t-background-transparent-light)] transition-colors cursor-pointer"
+            >
+              {theme === 'dark' ? <IconSun size={13} /> : <IconMoon size={13} />}
+            </button>
+
+            <button
+              onClick={logout}
+              title="Sign Out of CRM"
+              className="w-[24px] h-[24px] rounded-[4px] flex items-center justify-center text-[var(--t-font-color-tertiary)] hover:text-rose-400 hover:bg-rose-500/10 transition-colors cursor-pointer"
+            >
+              <IconLogout size={13} />
+            </button>
+          </div>
         </div>
       </div>
     </aside>

@@ -77,9 +77,9 @@ export function ProjectsView() {
   };
 
   const handleCopyClientLink = (project: Project) => {
-    const url = `${typeof window !== 'undefined' ? window.location.origin : ''}/portal?project=${project.id}&key=${project.clientAccessKey || 'secure-client'}`;
+    const url = `${typeof window !== 'undefined' ? window.location.origin : ''}/portal?key=${project.clientAccessKey}`;
     navigator.clipboard.writeText(url);
-    addToast(`Client Portal link copied for ${project.companyName}`, 'success');
+    addToast(`Secure Client Portal link copied for ${project.companyName}`, 'success');
   };
 
   return (

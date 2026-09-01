@@ -33,6 +33,8 @@ import { CreateSpaceModal } from '@/components/modals/CreateSpaceModal';
 import { EditSpaceModal } from '@/components/modals/EditSpaceModal';
 import { ConfirmModal } from '@/components/ui/ConfirmModal';
 
+import { LoginView } from '@/components/auth/LoginView';
+
 function CRMContent() {
   const { currentView, confirmModal, closeConfirmModal } = useCRM();
 
@@ -91,10 +93,36 @@ function CRMContent() {
   );
 }
 
+function CRMAppGate() {
+  const { isAuthenticated, isAuthLoading } = useCRM();
+
+  if (isAuthLoading) {
+    return (
+      <div className="min-h-screen w-screen bg-[var(--t-background-primary)] flex flex-col items-center justify-center gap-3 select-none">
+        <div className="w-[36px] h-[36px] rounded-[8px] bg-[var(--t-background-secondary)] border border-[var(--t-border-color-light)] flex items-center justify-center p-1.5 shadow-sm">
+          <img src="/logo.png" alt="upgradeUX" className="w-full h-full object-contain" />
+        </div>
+        <div className="inline-block w-4 h-4 border-2 border-[#5d4ef7]/30 border-t-[#5d4ef7] rounded-full animate-spin" />
+      </div>
+    );
+  }
+
+  if (!isAuthenticated) {
+    return (
+      <>
+        <LoginView />
+        <ToastContainer />
+      </>
+    );
+  }
+
+  return <CRMContent />;
+}
+
 export default function Page() {
   return (
     <CRMProvider>
-      <CRMContent />
+      <CRMAppGate />
     </CRMProvider>
   );
 }

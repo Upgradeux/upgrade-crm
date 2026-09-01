@@ -150,3 +150,12 @@ export function formatTwitterHandle(urlOrHandle: string): string {
   }
   return urlOrHandle.startsWith('@') ? urlOrHandle : `@${urlOrHandle}`;
 }
+
+export function generateSecurePortalKey(): string {
+  if (typeof crypto !== 'undefined' && crypto.getRandomValues) {
+    const bytes = new Uint8Array(16);
+    crypto.getRandomValues(bytes);
+    return `ux_sec_${Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join('')}`;
+  }
+  return `ux_sec_${Math.random().toString(36).substring(2, 15)}_${Date.now().toString(36)}`;
+}

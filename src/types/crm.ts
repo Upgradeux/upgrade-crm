@@ -211,6 +211,7 @@ export interface AppIntegration {
 export interface IntegrationsConfig {
   calComUsername: string;
   googleMeetEnabled: boolean;
+  defaultGoogleMeetUrl?: string;
   googleCalendarEmail: string;
   emailSyncAddress: string;
   whatsAppPhone?: string;

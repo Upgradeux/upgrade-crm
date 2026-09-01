@@ -25,12 +25,14 @@ export function BookMeetingModal() {
     addNote,
     agencyName,
     timezone,
+    integrationsConfig,
     addToast,
   } = useCRM();
 
   const [dateTime, setDateTime] = useState('');
-  const [meetLink, setMeetLink] = useState('');
+  const [meetLink, setMeetLink] = useState(integrationsConfig.defaultGoogleMeetUrl || 'https://meet.google.com/new');
   const [durationMinutes, setDurationMinutes] = useState(30);
+  const [sendEmailInvite, setSendEmailInvite] = useState(true);
   const [openGcalTab, setOpenGcalTab] = useState(false);
   const [isBooking, setIsBooking] = useState(false);
 
@@ -41,13 +43,22 @@ export function BookMeetingModal() {
     { value: '60', label: '60 min' },
   ];
 
-  // Generate clean Google Meet room code
-  const generateMeetCode = () => {
-    const chars = 'abcdefghijklmnopqrstuvwxyz';
-    const segment1 = Array.from({ length: 3 }, () => chars[Math.floor(Math.random() * chars.length)]).join('');
-    const segment2 = Array.from({ length: 4 }, () => chars[Math.floor(Math.random() * chars.length)]).join('');
-    const segment3 = Array.from({ length: 3 }, () => chars[Math.floor(Math.random() * chars.length)]).join('');
-    return `https://meet.google.com/${segment1}-${segment2}-${segment3}`;
+  const getGoogleCalendarTemplateUrl = () => {
+    if (!dateTime || !meetingModalLead) return '';
+    try {
+      const start = new Date(dateTime);
+      const end = new Date(start.getTime() + durationMinutes * 60 * 1000);
+      const formatGCalDate = (d: Date) => d.toISOString().replace(/-|:|\.\d+/g, '');
+      const dates = `${formatGCalDate(start)}/${formatGCalDate(end)}`;
+      const title = encodeURIComponent(`Discovery Call: ${meetingModalLead.companyName} x ${agencyName}`);
+      const details = encodeURIComponent(
+        `Meeting with ${meetingModalLead.contactName || meetingModalLead.companyName} and ${agencyName}.\n\nClient Email: ${meetingModalLead.email || 'N/A'}\nService: ${meetingModalLead.serviceInterest || 'General'}\nMeeting Link: ${meetLink}`
+      );
+      const add = encodeURIComponent(meetingModalLead.email || '');
+      return `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${title}&dates=${dates}&details=${details}&add=${add}`;
+    } catch {
+      return '';
+    }
   };
 
   useEffect(() => {
@@ -61,9 +72,11 @@ export function BookMeetingModal() {
       const formattedDefault = `${tomorrow.getFullYear()}-${pad(tomorrow.getMonth() + 1)}-${pad(tomorrow.getDate())}T${pad(tomorrow.getHours())}:${pad(tomorrow.getMinutes())}`;
       
       setDateTime(formattedDefault);
-      setMeetLink(generateMeetCode());
+      if (integrationsConfig.defaultGoogleMeetUrl) {
+        setMeetLink(integrationsConfig.defaultGoogleMeetUrl);
+      }
     }
-  }, [meetingModalLead]);
+  }, [meetingModalLead, integrationsConfig.defaultGoogleMeetUrl]);
 
   if (!meetingModalLead) return null;
 
@@ -92,11 +105,12 @@ export function BookMeetingModal() {
           time: timePart || '15:00',
           serviceInterest: meetingModalLead.serviceInterest,
           agencyName,
+          meetUrl: meetLink.trim(),
         }),
       });
 
       const data = await res.json();
-      const finalMeetLink = data.meetUrl || meetLink;
+      const finalMeetLink = meetLink.trim() || data.meetUrl;
 
       if (openGcalTab && data.googleCalendarWebUrl) {
         window.open(data.googleCalendarWebUrl, '_blank');
@@ -104,6 +118,28 @@ export function BookMeetingModal() {
 
       const isoDate = startDate.toISOString();
       const now = new Date().toISOString();
+      const formattedReadableDate = formatDate(isoDate, timezone);
+      const formattedTime = startDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+      // Automatically send meeting invitation email to client
+      if (sendEmailInvite && meetingModalLead.email) {
+        const clientName = meetingModalLead.contactName || meetingModalLead.companyName;
+        try {
+          await fetch('/api/send-email', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              to: meetingModalLead.email,
+              subject: `Confirmed: Intro Demo & Discovery Call with upgradeUX`,
+              text: `Hi ${clientName},\n\nYour discovery demo call with upgradeUX has been confirmed!\n\n📅 Date & Time: ${formattedReadableDate} at ${formattedTime} (${timezone})\n⏱️ Duration: ${durationMinutes} minutes\n🎥 Join Google Meet: ${finalMeetLink}\n\nYou can click the Google Meet link above to join the meeting directly when it starts.\n\nWe look forward to meeting with you!\n\nBest regards,\n${agencyName} Team\nupgradeux.agency@gmail.com`,
+              fromName: agencyName,
+              replyTo: 'upgradeux.agency@gmail.com',
+            }),
+          });
+        } catch {
+          // Logged gracefully
+        }
+      }
 
       updateLead(meetingModalLead.id, {
         bookedMeetingDate: isoDate,
@@ -115,11 +151,15 @@ export function BookMeetingModal() {
 
       addNote(
         meetingModalLead.id,
-        `Scheduled Google Meet for ${formatDate(isoDate, timezone)} (${startDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}) with link: ${finalMeetLink}`,
+        `Scheduled Google Meet for ${formattedReadableDate} (${formattedTime}) with link: ${finalMeetLink}${sendEmailInvite && meetingModalLead.email ? ` (Invited ${meetingModalLead.email})` : ''}`,
         'meeting'
       );
 
-      addToast(`Meeting booked! Google Meet link: ${finalMeetLink}`, 'success');
+      if (sendEmailInvite && meetingModalLead.email) {
+        addToast(`Meeting booked & invite sent to ${meetingModalLead.email}!`, 'success');
+      } else {
+        addToast(`Meeting booked! Google Meet link: ${finalMeetLink}`, 'success');
+      }
       setMeetingModalLead(null);
     } catch (err: any) {
       addToast(err.message || 'Failed to schedule meeting', 'error');
@@ -188,16 +228,17 @@ export function BookMeetingModal() {
         <div className="space-y-0.5">
           <div className="flex items-center justify-between">
             <label className="text-[10px] font-semibold text-[var(--t-font-color-tertiary)] uppercase tracking-wider">
-              Google Meet Link
+              Google Meet Room Link
             </label>
-            <button
-              type="button"
-              onClick={() => setMeetLink(generateMeetCode())}
-              className="text-[10px] text-[var(--t-font-color-tertiary)] hover:text-[var(--t-font-color-primary)] flex items-center gap-0.5 cursor-pointer"
+            <a
+              href={getGoogleCalendarTemplateUrl() || 'https://calendar.google.com'}
+              target="_blank"
+              rel="noreferrer"
+              className="text-[10px] text-indigo-400 hover:text-indigo-300 flex items-center gap-1 cursor-pointer font-medium"
             >
-              <IconRefresh size={10} />
-              <span>Regenerate</span>
-            </button>
+              <IconBrandGoogle size={11} />
+              <span>Launch Google Calendar & Meet</span>
+            </a>
           </div>
 
           <div className="relative">
@@ -205,14 +246,31 @@ export function BookMeetingModal() {
               required
               value={meetLink}
               onChange={(e) => setMeetLink(e.target.value)}
+              placeholder="https://meet.google.com/... or https://meet.google.com/new"
               className="w-full h-[26px] pl-6 pr-2 text-[11px] font-mono bg-[var(--t-background-secondary)] hover:bg-[var(--t-background-primary)] border border-[var(--t-border-color-light)] focus:border-[var(--t-border-color-focus)] rounded-[4px] outline-none text-[var(--t-font-color-primary)]"
             />
             <IconVideo size={12} className="absolute left-2 top-2 text-emerald-500 pointer-events-none" />
           </div>
+          <span className="text-[9.5px] text-[var(--t-font-color-tertiary)] block">
+            Tip: Set your permanent Google Meet link once in Settings → Integrations.
+          </span>
         </div>
 
-        {/* Direct Background / GCal Toggle */}
-        <div className="flex items-center justify-between pt-1">
+        {/* Toggles & Options */}
+        <div className="space-y-1.5 pt-1">
+          <label className="flex items-center gap-1.5 text-[10.5px] text-[var(--t-font-color-primary)] font-medium cursor-pointer">
+            <input
+              type="checkbox"
+              checked={sendEmailInvite}
+              onChange={(e) => setSendEmailInvite(e.target.checked)}
+              className="w-3.5 h-3.5 rounded bg-[var(--t-background-primary)] border-[var(--t-border-color-medium)] accent-[#5d4ef7]"
+            />
+            <span>
+              Send email invite with Google Meet link to{' '}
+              <strong className="text-indigo-400 font-mono">{meetingModalLead.email || 'client'}</strong>
+            </span>
+          </label>
+
           <label className="flex items-center gap-1.5 text-[10.5px] text-[var(--t-font-color-secondary)] cursor-pointer">
             <input
               type="checkbox"

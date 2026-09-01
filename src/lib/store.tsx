@@ -17,7 +17,7 @@ import {
   InboundSubmission,
 } from '@/types/crm';
 import { INITIAL_LEADS, INITIAL_PROJECTS } from './initialData';
-import { generateUUID, formatCurrency, formatDate } from './utils';
+import { generateUUID, formatCurrency, formatDate, generateSecurePortalKey } from './utils';
 
 export const DEFAULT_SPACES: IndustrySpace[] = [
   { id: 'all', name: 'All Spaces (Global)', slug: 'all', color: 'indigo', isDefault: true },
@@ -185,6 +185,13 @@ interface CRMContextType {
     onConfirm: () => void;
   }) => void;
   closeConfirmModal: () => void;
+
+  // Auth
+  isAuthenticated: boolean;
+  currentUser: { email: string; name: string } | null;
+  isAuthLoading: boolean;
+  login: (user: { email: string; name: string }) => void;
+  logout: () => Promise<void>;
 
   // Data Management
   clearAllData: () => void;
@@ -454,6 +461,48 @@ export function CRMProvider({ children }: { children: React.ReactNode }) {
     setConfirmModal((prev) => (prev ? { ...prev, isOpen: false } : null));
   };
 
+  // Auth State
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
+  const [currentUser, setCurrentUser] = useState<{ email: string; name: string } | null>(null);
+  const [isAuthLoading, setIsAuthLoading] = useState<boolean>(true);
+
+  // Check auth session on load
+  useEffect(() => {
+    async function checkAuthSession() {
+      try {
+        const res = await fetch('/api/auth/me');
+        const data = await res.json();
+        if (data.authenticated && data.user) {
+          setIsAuthenticated(true);
+          setCurrentUser(data.user);
+        } else {
+          setIsAuthenticated(false);
+          setCurrentUser(null);
+        }
+      } catch {
+        setIsAuthenticated(false);
+        setCurrentUser(null);
+      } finally {
+        setIsAuthLoading(false);
+      }
+    }
+    checkAuthSession();
+  }, []);
+
+  const login = (user: { email: string; name: string }) => {
+    setIsAuthenticated(true);
+    setCurrentUser(user);
+  };
+
+  const logout = async () => {
+    try {
+      await fetch('/api/auth/logout', { method: 'POST' });
+    } catch {}
+    setIsAuthenticated(false);
+    setCurrentUser(null);
+    addToast('Logged out of CRM workspace.', 'info');
+  };
+
   // Hydrate from localStorage on mount
   useEffect(() => {
     try {
@@ -461,7 +510,16 @@ export function CRMProvider({ children }: { children: React.ReactNode }) {
       if (savedLeads) setRawLeads(JSON.parse(savedLeads));
 
       const savedProjects = localStorage.getItem(STORAGE_KEY_PROJECTS);
-      if (savedProjects) setRawProjects(JSON.parse(savedProjects));
+      if (savedProjects) {
+        const parsed = JSON.parse(savedProjects).map((p: Project) => ({
+          ...p,
+          clientAccessKey:
+            p.clientAccessKey && p.clientAccessKey.startsWith('ux_sec_')
+              ? p.clientAccessKey
+              : generateSecurePortalKey(),
+        }));
+        setRawProjects(parsed);
+      }
 
       const savedSpaces = localStorage.getItem(STORAGE_KEY_SPACES);
       if (savedSpaces) setSpaces(JSON.parse(savedSpaces));
@@ -908,7 +966,7 @@ export function CRMProvider({ children }: { children: React.ReactNode }) {
       id,
       industrySpaceId: defaultSpace,
       industry: projectData.industry || matchedSpace?.name || 'Real Estate & Properties',
-      clientAccessKey: `ux-portal-${Math.random().toString(36).substring(2, 8)}`,
+      clientAccessKey: generateSecurePortalKey(),
       createdAt: now,
       updatedAt: now,
     };
@@ -1216,6 +1274,11 @@ export function CRMProvider({ children }: { children: React.ReactNode }) {
         confirmModal,
         confirmAction,
         closeConfirmModal,
+        isAuthenticated,
+        currentUser,
+        isAuthLoading,
+        login,
+        logout,
         clearAllData,
       }}
     >

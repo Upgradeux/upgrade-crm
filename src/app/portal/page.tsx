@@ -1,11 +1,9 @@
 'use client';
 
-import React, { useState } from 'react';
-import { useCRM } from '@/lib/store';
+import React, { useEffect, useState, Suspense } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { Project } from '@/types/crm';
-import { Badge } from '../ui/Badge';
-import { Button } from '../ui/Button';
-import { Dropdown } from '../ui/Dropdown';
+import { INITIAL_PROJECTS } from '@/lib/initialData';
 import {
   IconRocket,
   IconCheck,
@@ -13,144 +11,144 @@ import {
   IconExternalLink,
   IconBrandGithub,
   IconBrandFigma,
-  IconCopy,
   IconShieldCheck,
   IconCalendar,
+  IconLock,
   IconSparkles,
   IconBrandWhatsapp,
+  IconMail,
   IconChecklist,
   IconLink,
 } from '@tabler/icons-react';
 import { formatDate } from '@/lib/utils';
 
-export function ClientPortalPreview() {
-  const { projects, agencyName, agencyEmail, timezone, integrationsConfig, addToast } = useCRM();
+function ClientPortalContent() {
+  const searchParams = useSearchParams();
+  const key = searchParams.get('key') || '';
 
-  const [selectedProjectId, setSelectedProjectId] = useState<string>(
-    projects[0]?.id || ''
-  );
-  const [copiedLink, setCopiedLink] = useState(false);
+  const [project, setProject] = useState<Project | null>(null);
+  const [loading, setLoading] = useState(true);
 
-  const selectedProject = projects.find((p) => p.id === selectedProjectId) || projects[0];
+  useEffect(() => {
+    function loadPortalProject() {
+      if (!key) {
+        setLoading(false);
+        return;
+      }
 
-  const handleCopyClientLink = () => {
-    if (!selectedProject) return;
-    const url = `${typeof window !== 'undefined' ? window.location.origin : ''}/portal?key=${selectedProject.clientAccessKey}`;
-    navigator.clipboard.writeText(url);
-    setCopiedLink(true);
-    addToast('Client secure portal link copied!', 'success');
-    setTimeout(() => setCopiedLink(false), 2500);
-  };
+      try {
+        const localProjectsStr = typeof window !== 'undefined' ? localStorage.getItem('upgradeux_crm_projects_v3') : null;
+        if (localProjectsStr) {
+          const parsed: Project[] = JSON.parse(localProjectsStr);
+          const found = parsed.find((p) => p.clientAccessKey === key);
+          if (found) {
+            setProject(found);
+            setLoading(false);
+            return;
+          }
+        }
 
-  if (!selectedProject) {
+        const initialFound = INITIAL_PROJECTS.find((p) => p.clientAccessKey === key);
+        if (initialFound) {
+          setProject(initialFound);
+          setLoading(false);
+          return;
+        }
+      } catch (err) {
+        console.error('Portal load error:', err);
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    loadPortalProject();
+  }, [key]);
+
+  if (loading) {
     return (
-      <div className="flex-1 flex flex-col items-center justify-center p-8 text-center text-[var(--t-font-color-tertiary)]">
-        No active deliverables found.
+      <div className="min-h-screen w-screen bg-[#f8f9fb] flex flex-col items-center justify-center gap-3 select-none text-[#1e293b]">
+        <div className="w-[38px] h-[38px] rounded-[8px] bg-white border border-[#e2e4e9] flex items-center justify-center p-1.5 shadow-xs">
+          <img src="/logo.png" alt="upgradeUX" className="w-full h-full object-contain" />
+        </div>
+        <div className="inline-block w-4 h-4 border-2 border-[#5d4ef7]/30 border-t-[#5d4ef7] rounded-full animate-spin" />
+        <span className="text-[11.5px] font-mono text-[#64748b]">Verifying secure client access...</span>
       </div>
     );
   }
 
-  const completedMilestones = selectedProject.milestones.filter((m) => m.completed).length;
-
-  return (
-    <div className="flex-1 h-[calc(100vh-48px)] p-3 sm:p-5 overflow-y-auto bg-[var(--t-background-primary)] flex flex-col gap-3 select-none">
-      {/* Top Administrative Toolbar */}
-      <div className="h-[40px] px-3 rounded-[6px] bg-[var(--t-background-secondary)] border border-[var(--t-border-color-light)] flex items-center justify-between gap-3 shrink-0 max-w-[760px] w-full mx-auto">
-        <div className="flex items-center gap-2">
-          <IconShieldCheck size={14} className="text-emerald-500 shrink-0" />
-          <span className="text-[11.5px] font-medium text-[var(--t-font-color-primary)]">
-            Client Portal Live Simulation
-          </span>
-          <span className="text-[10px] text-[var(--t-font-color-tertiary)] hidden sm:inline">
-            • Exact view your client sees at <code className="font-mono text-indigo-400">/portal?key=...</code>
-          </span>
-        </div>
-
-        <div className="flex items-center gap-2">
-          <div className="w-[180px]">
-            <Dropdown
-              value={selectedProject.id}
-              onChange={setSelectedProjectId}
-              options={projects.map((p) => ({
-                value: p.id,
-                label: p.companyName,
-              }))}
-              size="sm"
-              buttonClassName="h-[26px] text-[11px] bg-[var(--t-background-primary)]"
-            />
+  if (!project) {
+    return (
+      <div className="min-h-screen w-screen bg-[#f8f9fb] flex flex-col items-center justify-center p-4 text-[#1e293b] select-none">
+        <div className="w-full max-w-[400px] bg-white border border-[#e2e4e9] rounded-[10px] p-6 text-center space-y-3.5 shadow-sm">
+          <div className="w-[40px] h-[40px] rounded-[8px] bg-rose-50 border border-rose-100 text-rose-500 mx-auto flex items-center justify-center">
+            <IconLock size={18} />
           </div>
-
-          <Button
-            variant="primary"
-            size="sm"
-            leftIcon={copiedLink ? <IconCheck size={11} /> : <IconCopy size={11} />}
-            onClick={handleCopyClientLink}
-          >
-            {copiedLink ? 'Copied' : 'Copy Share Link'}
-          </Button>
+          <div>
+            <h1 className="text-[15px] font-bold text-[#0f172a] tracking-tight">
+              Secure Client Portal
+            </h1>
+            <p className="text-[12px] text-[#64748b] mt-1">
+              Project link not found or access token has expired.
+            </p>
+          </div>
+          <div className="p-3 rounded-[6px] bg-[#f8fafc] border border-[#e2e8f0] text-[11.5px] text-[#475569] leading-relaxed">
+            Please contact <strong>upgradeUX</strong> at <a href="mailto:upgradeux.agency@gmail.com" className="text-[#5d4ef7] font-medium underline">upgradeux.agency@gmail.com</a>.
+          </div>
         </div>
       </div>
+    );
+  }
 
-      {/* Clean, Crisp Light Twenty-Style Client Portal Card */}
-      <div className="max-w-[760px] w-full mx-auto bg-white text-[#0f172a] border border-[#e2e4e9] rounded-[10px] shadow-xs overflow-hidden flex flex-col my-1">
-        {/* Header Bar */}
-        <div className="px-5 py-3.5 border-b border-[#f1f5f9] flex items-center justify-between gap-3">
-          <div className="flex items-center gap-2.5">
-            <div className="w-[26px] h-[26px] rounded-[5px] bg-[#f1f5f9] border border-[#e2e8f0] flex items-center justify-center p-1 shrink-0">
-              <img
-                src="/logo.png"
-                alt={agencyName}
-                className="w-full h-full object-contain"
-              />
+  const completedCount = project.milestones.filter((m) => m.completed).length;
+
+  return (
+    <div className="min-h-screen w-screen bg-[#f8f9fb] text-[#1e293b] p-3.5 sm:p-6 overflow-y-auto select-none">
+      {/* Container */}
+      <div className="max-w-[720px] w-full mx-auto space-y-3.5">
+        {/* Top Navbar */}
+        <div className="h-[44px] px-3.5 rounded-[8px] bg-white border border-[#e2e4e9] flex items-center justify-between gap-3 shadow-xs">
+          <div className="flex items-center gap-2">
+            <div className="w-[22px] h-[22px] rounded-[4px] bg-[#f1f5f9] border border-[#e2e8f0] flex items-center justify-center p-0.5 shrink-0">
+              <img src="/logo.png" alt="upgradeUX" className="w-full h-full object-contain" />
             </div>
-            <div>
-              <div className="flex items-center gap-1.5 leading-tight">
-                <span className="text-[13px] font-bold text-[#0f172a]">
-                  {agencyName}
-                </span>
-                <span className="text-[#cbd5e1]">/</span>
-                <span className="text-[#64748b] text-[11.5px] font-medium">
-                  {selectedProject.companyName}
-                </span>
-              </div>
-              <div className="text-[10px] text-[#94a3b8]">
-                Client Workspace & Live Deliverables
-              </div>
+            <div className="flex items-center gap-1.5 text-[12px] font-medium leading-tight">
+              <span className="font-bold text-[#0f172a] tracking-tight">upgradeUX</span>
+              <span className="text-[#cbd5e1]">/</span>
+              <span className="text-[#64748b] truncate max-w-[200px]">{project.companyName}</span>
             </div>
           </div>
 
           <div className="flex items-center gap-2">
-            <span className="px-2 py-0.5 rounded-[4px] bg-emerald-50 text-emerald-600 border border-emerald-200 text-[10.5px] font-mono flex items-center gap-1">
+            <span className="px-2 py-0.5 rounded-[4px] bg-emerald-50 text-emerald-600 border border-emerald-200 text-[10.5px] font-medium flex items-center gap-1">
               <IconShieldCheck size={12} />
-              <span>Verified Safe</span>
+              <span>Verified Client Safe</span>
             </span>
           </div>
         </div>
 
-        {/* Body Content */}
-        <div className="p-5 space-y-4 text-[12px]">
-          {/* Project Title & Progress Row */}
-          <div className="flex items-start justify-between gap-3 pb-3 border-b border-[#f1f5f9]">
+        {/* Project Overview Main Card */}
+        <div className="bg-white border border-[#e2e4e9] rounded-[10px] p-5 shadow-xs space-y-4">
+          {/* Header row */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 pb-3.5 border-b border-[#f1f5f9]">
             <div>
               <div className="flex items-center gap-2 flex-wrap">
-                <h2 className="text-[17px] font-bold text-[#0f172a] tracking-tight">
-                  {selectedProject.projectName}
-                </h2>
-                <span className="px-2 py-0.5 rounded-[4px] bg-[#f1f5f9] text-[#475569] border border-[#e2e8f0] text-[10.5px] font-medium font-mono">
-                  {selectedProject.serviceType}
+                <h1 className="text-[17px] font-bold text-[#0f172a] tracking-tight">
+                  {project.projectName}
+                </h1>
+                <span className="px-2 py-0.5 rounded-[4px] bg-[#f1f5f9] text-[#475569] border border-[#e2e8f0] text-[11px] font-medium font-mono">
+                  {project.serviceType}
                 </span>
               </div>
-
-              <div className="flex items-center gap-2 text-[11px] text-[#64748b] mt-1 font-mono">
-                <span>Target Launch: {formatDate(selectedProject.targetDeliveryDate, timezone)}</span>
+              <div className="flex items-center gap-2 text-[11.5px] text-[#64748b] mt-1 font-mono">
+                <span>Kickoff: {formatDate(project.startDate)}</span>
                 <span>•</span>
-                <span>Kickoff: {formatDate(selectedProject.startDate, timezone)}</span>
+                <span>Target Delivery: {formatDate(project.targetDeliveryDate)}</span>
               </div>
             </div>
 
             <div className="flex items-center gap-2">
               <span className="px-2.5 py-1 rounded-[5px] bg-[#f8fafc] border border-[#e2e8f0] text-[11.5px] font-semibold text-[#334155]">
-                {selectedProject.status}
+                {project.status}
               </span>
             </div>
           </div>
@@ -162,26 +160,26 @@ export function ClientPortalPreview() {
                 Sprint Completion Progress
               </span>
               <span className="font-mono text-emerald-600 font-bold text-[11.5px]">
-                {selectedProject.progressPercent}% ({completedMilestones}/{selectedProject.milestones.length} Milestones)
+                {project.progressPercent}% ({completedCount}/{project.milestones.length} Milestones)
               </span>
             </div>
             <div className="w-full h-[6px] bg-[#e2e8f0] rounded-full overflow-hidden">
               <div
                 className="h-full bg-emerald-500 rounded-full transition-all duration-500"
-                style={{ width: `${selectedProject.progressPercent}%` }}
+                style={{ width: `${project.progressPercent}%` }}
               />
             </div>
           </div>
 
-          {/* Live Engineering Update */}
-          {selectedProject.clientNotes && (
+          {/* Agency Announcement Note */}
+          {project.clientNotes && (
             <div className="p-3 rounded-[6px] bg-[#fffbeb] border border-[#fef3c7] space-y-1">
               <div className="flex items-center gap-1.5 text-[10.5px] font-semibold text-amber-700 uppercase tracking-wider">
                 <IconSparkles size={13} />
                 <span>Live Update from Engineering Team</span>
               </div>
               <p className="text-[12px] text-[#78350f] leading-relaxed">
-                {selectedProject.clientNotes}
+                {project.clientNotes}
               </p>
             </div>
           )}
@@ -191,15 +189,14 @@ export function ClientPortalPreview() {
             <div className="flex items-center justify-between">
               <div className="text-[10.5px] font-semibold text-[#64748b] uppercase tracking-wider flex items-center gap-1">
                 <IconChecklist size={13} />
-                <span>Project Milestones & Checkpoints</span>
+                <span>Project Milestones Checklist</span>
               </div>
               <span className="text-[10.5px] text-[#94a3b8] font-mono">
-                {completedMilestones} of {selectedProject.milestones.length} completed
+                {completedCount} of {project.milestones.length} completed
               </span>
             </div>
-
             <div className="space-y-1.5">
-              {selectedProject.milestones.map((m) => (
+              {project.milestones.map((m) => (
                 <div
                   key={m.id}
                   className={`p-2.5 rounded-[6px] border flex items-center justify-between text-[12px] transition-colors ${
@@ -225,7 +222,7 @@ export function ClientPortalPreview() {
 
                   <div className="flex items-center gap-1.5 text-[11px] font-mono text-[#64748b]">
                     <IconClock size={11} />
-                    <span>Due {formatDate(m.dueDate, timezone)}</span>
+                    <span>Due {formatDate(m.dueDate)}</span>
                   </div>
                 </div>
               ))}
@@ -233,16 +230,16 @@ export function ClientPortalPreview() {
           </div>
 
           {/* Deliverables / Production Links */}
-          {(selectedProject.liveUrl || selectedProject.figmaUrl || selectedProject.repoUrl) && (
+          {(project.liveUrl || project.figmaUrl || project.repoUrl) && (
             <div className="space-y-2 pt-2 border-t border-[#f1f5f9]">
               <div className="text-[10.5px] font-semibold text-[#64748b] uppercase tracking-wider flex items-center gap-1">
                 <IconLink size={12} />
                 <span>Deliverables & Resources</span>
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                {selectedProject.liveUrl && (
+                {project.liveUrl && (
                   <a
-                    href={selectedProject.liveUrl.startsWith('http') ? selectedProject.liveUrl : `https://${selectedProject.liveUrl}`}
+                    href={project.liveUrl.startsWith('http') ? project.liveUrl : `https://${project.liveUrl}`}
                     target="_blank"
                     rel="noreferrer"
                     className="p-2.5 rounded-[6px] bg-[#f8fafc] hover:bg-[#f1f5f9] border border-[#e2e8f0] flex items-center justify-between text-[11.5px] text-[#0f172a] font-medium transition-colors"
@@ -254,9 +251,9 @@ export function ClientPortalPreview() {
                     <IconExternalLink size={11} className="text-[#94a3b8]" />
                   </a>
                 )}
-                {selectedProject.figmaUrl && (
+                {project.figmaUrl && (
                   <a
-                    href={selectedProject.figmaUrl.startsWith('http') ? selectedProject.figmaUrl : `https://${selectedProject.figmaUrl}`}
+                    href={project.figmaUrl.startsWith('http') ? project.figmaUrl : `https://${project.figmaUrl}`}
                     target="_blank"
                     rel="noreferrer"
                     className="p-2.5 rounded-[6px] bg-[#f8fafc] hover:bg-[#f1f5f9] border border-[#e2e8f0] flex items-center justify-between text-[11.5px] text-[#0f172a] font-medium transition-colors"
@@ -268,9 +265,9 @@ export function ClientPortalPreview() {
                     <IconExternalLink size={11} className="text-[#94a3b8]" />
                   </a>
                 )}
-                {selectedProject.repoUrl && (
+                {project.repoUrl && (
                   <a
-                    href={selectedProject.repoUrl.startsWith('http') ? selectedProject.repoUrl : `https://${selectedProject.repoUrl}`}
+                    href={project.repoUrl.startsWith('http') ? project.repoUrl : `https://${project.repoUrl}`}
                     target="_blank"
                     rel="noreferrer"
                     className="p-2.5 rounded-[6px] bg-[#f8fafc] hover:bg-[#f1f5f9] border border-[#e2e8f0] flex items-center justify-between text-[11.5px] text-[#0f172a] font-medium transition-colors"
@@ -289,8 +286,8 @@ export function ClientPortalPreview() {
           {/* Agency Support & Schedule Sync */}
           <div className="p-3.5 rounded-[8px] bg-[#f8fafc] border border-[#e2e8f0] flex flex-col sm:flex-row items-center justify-between gap-3">
             <div className="text-center sm:text-left">
-              <div className="text-[12px] font-bold text-[#0f172a]">
-                Questions? Direct Support: <span className="font-mono text-[#5d4ef7] font-semibold">{agencyEmail}</span>
+              <div className="text-[12.5px] font-bold text-[#0f172a]">
+                Have questions or need adjustments?
               </div>
               <div className="text-[11px] text-[#64748b] mt-0.5">
                 Book a 15-minute review call or message us directly on WhatsApp.
@@ -299,7 +296,7 @@ export function ClientPortalPreview() {
 
             <div className="flex items-center gap-2 shrink-0">
               <a
-                href={`https://wa.me/${(integrationsConfig.whatsAppPhone || '918369672169').replace(/[^0-9]/g, '')}`}
+                href="https://wa.me/918369672169"
                 target="_blank"
                 rel="noreferrer"
                 className="h-[30px] px-2.5 rounded-[5px] bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 text-emerald-700 text-[11.5px] font-medium flex items-center gap-1.5 transition-colors"
@@ -309,7 +306,7 @@ export function ClientPortalPreview() {
               </a>
 
               <a
-                href={`https://cal.com/${integrationsConfig.calComUsername || 'upgradeux'}`}
+                href="https://cal.com/upgradeux"
                 target="_blank"
                 rel="noreferrer"
                 className="h-[30px] px-3 rounded-[5px] bg-[#5d4ef7] hover:bg-[#4d3ef0] text-white text-[11.5px] font-medium flex items-center gap-1.5 shadow-xs transition-all"
@@ -320,7 +317,26 @@ export function ClientPortalPreview() {
             </div>
           </div>
         </div>
+
+        {/* Footer */}
+        <div className="text-center text-[10.5px] font-mono text-[#94a3b8]">
+          © {new Date().getFullYear()} upgradeUX Agency. All rights reserved.
+        </div>
       </div>
     </div>
+  );
+}
+
+export default function PortalPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="min-h-screen w-screen bg-[#f8f9fb] flex items-center justify-center text-[#1e293b]">
+          <div className="inline-block w-4 h-4 border-2 border-[#5d4ef7]/30 border-t-[#5d4ef7] rounded-full animate-spin" />
+        </div>
+      }
+    >
+      <ClientPortalContent />
+    </Suspense>
   );
 }

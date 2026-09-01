@@ -29,6 +29,7 @@ export async function POST(req: NextRequest) {
       time = '18:00',
       serviceInterest = 'AI Discovery Call',
       agencyName = 'upgradeUX',
+      meetUrl: providedMeetUrl,
     } = body;
 
     if (!date) {
@@ -39,8 +40,8 @@ export async function POST(req: NextRequest) {
     const startDateTime = new Date(`${date}T${time}:00`);
     const endDateTime = new Date(startDateTime.getTime() + 30 * 60000); // 30 mins
 
-    const meetCode = generateGoogleMeetCode();
-    const meetUrl = `https://meet.google.com/${meetCode}`;
+    const meetUrl = providedMeetUrl && providedMeetUrl.trim() ? providedMeetUrl.trim() : `https://meet.google.com/new`;
+    const meetCode = meetUrl.split('/').pop() || 'meet';
 
     // If Google Calendar Service Account credentials exist in env
     const clientEmail = process.env.GOOGLE_CALENDAR_CLIENT_EMAIL;

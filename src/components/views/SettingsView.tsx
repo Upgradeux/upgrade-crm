@@ -73,6 +73,7 @@ export function SettingsView() {
 
   const [activeTab, setActiveTab] = useState<'profile' | 'integrations' | 'database' | 'appearance' | 'data'>('profile');
   const [calCom, setCalCom] = useState(integrationsConfig.calComUsername || 'upgradeux');
+  const [defaultMeetUrl, setDefaultMeetUrl] = useState(integrationsConfig.defaultGoogleMeetUrl || '');
   const [googleEmail, setGoogleEmail] = useState(integrationsConfig.googleCalendarEmail || 'upgradeux.agency@gmail.com');
   const [outreachEmail, setOutreachEmail] = useState(integrationsConfig.emailSyncAddress || 'upgradeux.agency@gmail.com');
   const [whatsAppPhone, setWhatsAppPhone] = useState(integrationsConfig.whatsAppPhone || '+91 8369672169');
@@ -363,6 +364,21 @@ export function SettingsView() {
                     Account used to host Google Meet video conference calls.
                   </span>
                 </div>
+
+                <div>
+                  <label className="text-[10px] font-semibold text-[var(--t-font-color-tertiary)] uppercase tracking-wider block mb-1">
+                    Permanent Google Meet Room URL (Optional)
+                  </label>
+                  <Input
+                    value={defaultMeetUrl}
+                    onChange={(e) => setDefaultMeetUrl(e.target.value)}
+                    placeholder="https://meet.google.com/xxx-yyyy-zzz"
+                    className="font-mono text-[11.5px] h-[28px]"
+                  />
+                  <span className="text-[10px] text-[var(--t-font-color-tertiary)] mt-1 block">
+                    Your agency permanent meeting link. Auto-fills whenever booking calls in CRM.
+                  </span>
+                </div>
               </div>
             </div>
 
@@ -404,6 +420,7 @@ export function SettingsView() {
                 onClick={() => {
                   updateIntegrationsConfig({
                     calComUsername: calCom,
+                    defaultGoogleMeetUrl: defaultMeetUrl,
                     googleCalendarEmail: googleEmail,
                     emailSyncAddress: outreachEmail,
                     whatsAppPhone: whatsAppPhone,

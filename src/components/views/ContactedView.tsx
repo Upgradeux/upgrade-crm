@@ -73,7 +73,7 @@ export function ContactedView() {
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               leftIcon={<IconSearch size={13} />}
-              className="h-[26px] text-[12px] bg-[var(--t-background-primary)]"
+              className="h-6.5 text-[12px] bg-[var(--t-background-primary)]"
             />
           </div>
 

@@ -1,4 +1,4 @@
-import { Lead, Project, SupabaseConfig } from '@/types/crm';
+import { Lead, Project, InboundSubmission, SupabaseConfig } from '@/types/crm';
 
 export const SUPABASE_SQL_SCHEMA = `-- ============================================================================
 -- SUPABASE DATABASE SCHEMA FOR WEB & AI AGENCY CRM
@@ -46,9 +46,26 @@ CREATE TABLE IF NOT EXISTS public.projects (
   updated_at TIMESTAMPTZ DEFAULT now()
 );
 
--- 3. Enable Row Level Security (RLS) & Allow Anonymous Read/Write with Anon Key
+-- 3. Create Inbound Submissions Table (For Website Inquiries & Cal.com Webhooks)
+CREATE TABLE IF NOT EXISTS public.inbound_submissions (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  email TEXT,
+  phone TEXT,
+  interests JSONB DEFAULT '[]'::jsonb,
+  message TEXT,
+  budget TEXT,
+  deadline TEXT,
+  source TEXT DEFAULT 'Website Contact Form',
+  status TEXT DEFAULT 'new',
+  converted_lead_id TEXT,
+  created_at TIMESTAMPTZ DEFAULT now()
+);
+
+-- 4. Enable Row Level Security (RLS) & Allow Anonymous Read/Write with Anon Key
 ALTER TABLE public.leads ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.projects ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.inbound_submissions ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY "Allow public anon access for CRM leads" ON public.leads
   FOR ALL USING (true) WITH CHECK (true);
@@ -56,9 +73,13 @@ CREATE POLICY "Allow public anon access for CRM leads" ON public.leads
 CREATE POLICY "Allow public anon access for CRM projects" ON public.projects
   FOR ALL USING (true) WITH CHECK (true);
 
--- 4. Enable Realtime Sync
+CREATE POLICY "Allow public anon access for CRM inbound submissions" ON public.inbound_submissions
+  FOR ALL USING (true) WITH CHECK (true);
+
+-- 5. Enable Realtime Sync
 ALTER PUBLICATION supabase_realtime ADD TABLE public.leads;
 ALTER PUBLICATION supabase_realtime ADD TABLE public.projects;
+ALTER PUBLICATION supabase_realtime ADD TABLE public.inbound_submissions;
 `;
 
 export function getSupabaseEnvConfig(): { url: string; anonKey: string; isConfigured: boolean } {
@@ -178,3 +199,131 @@ export async function fetchLeadsFromSupabase(config: SupabaseConfig): Promise<Le
     return null;
   }
 }
+
+export async function saveInboundSubmissionToSupabase(
+  submission: InboundSubmission,
+  config: { url: string; anonKey: string }
+): Promise<boolean> {
+  if (!config.url || !config.anonKey) return false;
+  try {
+    const cleanUrl = config.url.replace(/\/+$/, '');
+    const row = {
+      id: submission.id,
+      name: submission.name,
+      email: submission.email || null,
+      phone: submission.phone || null,
+      interests: submission.interests || [],
+      message: submission.message || '',
+      budget: submission.budget || null,
+      deadline: submission.deadline || null,
+      source: submission.source || 'Website Contact Form',
+      status: submission.status || 'new',
+      converted_lead_id: submission.convertedLeadId || null,
+      created_at: submission.createdAt || new Date().toISOString(),
+    };
+
+    const res = await fetch(`${cleanUrl}/rest/v1/inbound_submissions`, {
+      method: 'POST',
+      headers: {
+        apikey: config.anonKey,
+        Authorization: `Bearer ${config.anonKey}`,
+        'Content-Type': 'application/json',
+        Prefer: 'resolution=merge-duplicates',
+      },
+      body: JSON.stringify(row),
+    });
+
+    return res.ok;
+  } catch (e) {
+    console.error('Failed to save inbound submission to Supabase:', e);
+    return false;
+  }
+}
+
+export async function fetchInboundSubmissionsFromSupabase(
+  config: SupabaseConfig
+): Promise<InboundSubmission[] | null> {
+  if (!config.isConnected || !config.url || !config.anonKey) return null;
+  try {
+    const cleanUrl = config.url.replace(/\/+$/, '');
+    const res = await fetch(`${cleanUrl}/rest/v1/inbound_submissions?select=*&order=created_at.desc`, {
+      method: 'GET',
+      headers: {
+        apikey: config.anonKey,
+        Authorization: `Bearer ${config.anonKey}`,
+      },
+    });
+
+    if (!res.ok) return null;
+    const data = await res.json();
+    return data.map((d: any) => ({
+      id: d.id,
+      name: d.name,
+      email: d.email || '',
+      phone: d.phone || undefined,
+      interests: Array.isArray(d.interests) ? d.interests : [],
+      message: d.message || '',
+      budget: d.budget || undefined,
+      deadline: d.deadline || undefined,
+      source: d.source || 'Website Contact Form',
+      status: d.status || 'new',
+      convertedLeadId: d.converted_lead_id || undefined,
+      createdAt: d.created_at,
+    }));
+  } catch (e) {
+    console.error('Failed to fetch inbound submissions from Supabase:', e);
+    return null;
+  }
+}
+
+export async function updateInboundSubmissionInSupabase(
+  id: string,
+  updates: Partial<InboundSubmission>,
+  config: SupabaseConfig
+): Promise<boolean> {
+  if (!config.isConnected || !config.url || !config.anonKey) return false;
+  try {
+    const cleanUrl = config.url.replace(/\/+$/, '');
+    const patchBody: any = {};
+    if (updates.status) patchBody.status = updates.status;
+    if (updates.convertedLeadId) patchBody.converted_lead_id = updates.convertedLeadId;
+
+    const res = await fetch(`${cleanUrl}/rest/v1/inbound_submissions?id=eq.${encodeURIComponent(id)}`, {
+      method: 'PATCH',
+      headers: {
+        apikey: config.anonKey,
+        Authorization: `Bearer ${config.anonKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(patchBody),
+    });
+
+    return res.ok;
+  } catch (e) {
+    console.error('Failed to update inbound submission in Supabase:', e);
+    return false;
+  }
+}
+
+export async function deleteInboundSubmissionFromSupabase(
+  id: string,
+  config: SupabaseConfig
+): Promise<boolean> {
+  if (!config.isConnected || !config.url || !config.anonKey) return false;
+  try {
+    const cleanUrl = config.url.replace(/\/+$/, '');
+    const res = await fetch(`${cleanUrl}/rest/v1/inbound_submissions?id=eq.${encodeURIComponent(id)}`, {
+      method: 'DELETE',
+      headers: {
+        apikey: config.anonKey,
+        Authorization: `Bearer ${config.anonKey}`,
+      },
+    });
+
+    return res.ok;
+  } catch (e) {
+    console.error('Failed to delete inbound submission from Supabase:', e);
+    return false;
+  }
+}
+

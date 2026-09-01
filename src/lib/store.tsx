@@ -28,7 +28,13 @@ export const DEFAULT_SPACES: IndustrySpace[] = [
   { id: 'saas-b2b', name: 'SaaS & B2B Tech', slug: 'saas-b2b', color: 'purple' },
 ];
 import { triggerConfetti } from './confetti';
-import { syncLeadsToSupabase, fetchLeadsFromSupabase } from './supabase';
+import {
+  syncLeadsToSupabase,
+  fetchLeadsFromSupabase,
+  fetchInboundSubmissionsFromSupabase,
+  updateInboundSubmissionInSupabase,
+  deleteInboundSubmissionFromSupabase,
+} from './supabase';
 
 interface Toast {
   id: string;
@@ -459,25 +465,51 @@ export function CRMProvider({ children }: { children: React.ReactNode }) {
     } catch {}
   }, [inboundSubmissions]);
 
-  // Background Auto-Sync on Mount with Supabase Cloud DB
+  // Background Auto-Sync on Mount & Periodic Polling with Supabase Cloud DB
   useEffect(() => {
     const autoSyncFromCloud = async () => {
-      const envUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-      const envKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+      const envUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || supabaseConfig.url;
+      const envKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || supabaseConfig.anonKey;
       if (envUrl && envKey) {
         try {
           const config = { url: envUrl, anonKey: envKey, isConnected: true };
-          const remoteLeads = await fetchLeadsFromSupabase(config);
+          const [remoteLeads, remoteInbound] = await Promise.all([
+            fetchLeadsFromSupabase(config),
+            fetchInboundSubmissionsFromSupabase(config),
+          ]);
+
           if (remoteLeads && remoteLeads.length > 0) {
             setRawLeads(remoteLeads);
+          }
+
+          if (remoteInbound) {
+            setInboundSubmissions((prev) => {
+              const existingIds = new Set(remoteInbound.map((s) => s.id));
+              const localOnly = prev.filter((s) => !existingIds.has(s.id));
+              return [...remoteInbound, ...localOnly];
+            });
           }
         } catch (e) {
           console.warn('Background auto-sync:', e);
         }
       }
     };
+
+    // Initial fetch on mount
     autoSyncFromCloud();
-  }, []);
+
+    // Auto-refresh every 15 seconds to catch live inbound leads from the website
+    const interval = setInterval(autoSyncFromCloud, 15000);
+
+    // Refresh when user focuses the tab
+    const handleFocus = () => autoSyncFromCloud();
+    window.addEventListener('focus', handleFocus);
+
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('focus', handleFocus);
+    };
+  }, [supabaseConfig.url, supabaseConfig.anonKey]);
 
   // Save Leads
   useEffect(() => {
@@ -552,9 +584,19 @@ export function CRMProvider({ children }: { children: React.ReactNode }) {
     try {
       const pushOk = await syncLeadsToSupabase(rawLeads, activeConfig);
       if (pushOk) {
-        const remoteLeads = await fetchLeadsFromSupabase(activeConfig);
+        const [remoteLeads, remoteInbound] = await Promise.all([
+          fetchLeadsFromSupabase(activeConfig),
+          fetchInboundSubmissionsFromSupabase(activeConfig),
+        ]);
         if (remoteLeads && remoteLeads.length > 0) {
           setRawLeads(remoteLeads);
+        }
+        if (remoteInbound) {
+          setInboundSubmissions((prev) => {
+            const existingIds = new Set(remoteInbound.map((s) => s.id));
+            const localOnly = prev.filter((s) => !existingIds.has(s.id));
+            return [...remoteInbound, ...localOnly];
+          });
         }
         setSupabaseConfig(activeConfig);
         addToast('Synced successfully with Supabase PostgreSQL database!', 'success');
@@ -973,6 +1015,15 @@ export function CRMProvider({ children }: { children: React.ReactNode }) {
       prev.map((s) => (s.id === submissionId ? { ...s, status: 'converted', convertedLeadId: newLead.id } : s))
     );
     addToast(`Converted "${sub.name}" into Deals Pipeline!`, 'success');
+
+    // Async sync to Supabase
+    const envUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || supabaseConfig.url;
+    const envKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || supabaseConfig.anonKey;
+    if (envUrl && envKey) {
+      const config = { url: envUrl, anonKey: envKey, isConnected: true };
+      syncLeadsToSupabase([newLead, ...rawLeads], config);
+      updateInboundSubmissionInSupabase(submissionId, { status: 'converted', convertedLeadId: newLead.id }, config);
+    }
   };
 
   const dismissInboundSubmission = (submissionId: string) => {
@@ -980,11 +1031,23 @@ export function CRMProvider({ children }: { children: React.ReactNode }) {
       prev.map((s) => (s.id === submissionId ? { ...s, status: 'dismissed' } : s))
     );
     addToast('Inbound inquiry marked as dismissed', 'info');
+
+    const envUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || supabaseConfig.url;
+    const envKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || supabaseConfig.anonKey;
+    if (envUrl && envKey) {
+      updateInboundSubmissionInSupabase(submissionId, { status: 'dismissed' }, { url: envUrl, anonKey: envKey, isConnected: true });
+    }
   };
 
   const deleteInboundSubmission = (submissionId: string) => {
     setInboundSubmissions((prev) => prev.filter((s) => s.id !== submissionId));
     addToast('Inbound submission removed', 'info');
+
+    const envUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || supabaseConfig.url;
+    const envKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || supabaseConfig.anonKey;
+    if (envUrl && envKey) {
+      deleteInboundSubmissionFromSupabase(submissionId, { url: envUrl, anonKey: envKey, isConnected: true });
+    }
   };
 
   const clearAllData = () => {

@@ -83,10 +83,48 @@ export async function POST(req: NextRequest) {
       budget: budget || undefined,
       deadline: deadline || undefined,
       source: source,
-      status: 'new',
+      status: 'new' as const,
       meetingDate: meetingDate,
       createdAt: new Date().toISOString(),
     };
+
+    // Auto-persist directly to Supabase if configured
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL;
+    const supabaseKey =
+      process.env.SUPABASE_SERVICE_ROLE_KEY ||
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
+      process.env.SUPABASE_ANON_KEY;
+
+    if (supabaseUrl && supabaseKey) {
+      try {
+        const cleanUrl = supabaseUrl.replace(/\/+$/, '');
+        // 1. Insert into inbound_submissions table
+        await fetch(`${cleanUrl}/rest/v1/inbound_submissions`, {
+          method: 'POST',
+          headers: {
+            apikey: supabaseKey,
+            Authorization: `Bearer ${supabaseKey}`,
+            'Content-Type': 'application/json',
+            Prefer: 'resolution=merge-duplicates',
+          },
+          body: JSON.stringify({
+            id: submission.id,
+            name: submission.name,
+            email: submission.email || null,
+            phone: submission.phone || null,
+            interests: submission.interests || [],
+            message: submission.message || '',
+            budget: submission.budget || null,
+            deadline: submission.deadline || null,
+            source: submission.source,
+            status: 'new',
+            created_at: submission.createdAt,
+          }),
+        });
+      } catch (err) {
+        console.error('Failed saving to Supabase from /api/inbound-leads:', err);
+      }
+    }
 
     return NextResponse.json(
       {
@@ -109,7 +147,57 @@ export async function POST(req: NextRequest) {
   }
 }
 
-export async function GET() {
+export async function GET(req: NextRequest) {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL;
+  const supabaseKey =
+    process.env.SUPABASE_SERVICE_ROLE_KEY ||
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
+    process.env.SUPABASE_ANON_KEY;
+
+  if (supabaseUrl && supabaseKey) {
+    try {
+      const cleanUrl = supabaseUrl.replace(/\/+$/, '');
+      const res = await fetch(`${cleanUrl}/rest/v1/inbound_submissions?select=*&order=created_at.desc`, {
+        method: 'GET',
+        headers: {
+          apikey: supabaseKey,
+          Authorization: `Bearer ${supabaseKey}`,
+        },
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        const submissions = data.map((d: any) => ({
+          id: d.id,
+          name: d.name,
+          email: d.email || '',
+          phone: d.phone || undefined,
+          interests: Array.isArray(d.interests) ? d.interests : [],
+          message: d.message || '',
+          budget: d.budget || undefined,
+          deadline: d.deadline || undefined,
+          source: d.source || 'Website Contact Form',
+          status: d.status || 'new',
+          convertedLeadId: d.converted_lead_id || undefined,
+          createdAt: d.created_at,
+        }));
+
+        return NextResponse.json(
+          {
+            status: 'active',
+            count: submissions.length,
+            submissions,
+          },
+          {
+            headers: { 'Access-Control-Allow-Origin': '*' },
+          }
+        );
+      }
+    } catch (e) {
+      console.error('Error fetching submissions in GET /api/inbound-leads:', e);
+    }
+  }
+
   return NextResponse.json(
     {
       status: 'active',

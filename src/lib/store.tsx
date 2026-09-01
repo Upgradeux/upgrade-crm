@@ -34,6 +34,8 @@ import {
   fetchInboundSubmissionsFromSupabase,
   updateInboundSubmissionInSupabase,
   deleteInboundSubmissionFromSupabase,
+  clearAllInboundSubmissionsFromSupabase,
+  clearAllSupabaseTables,
 } from './supabase';
 
 interface Toast {
@@ -125,6 +127,7 @@ interface CRMContextType {
   convertInboundToLead: (submissionId: string, targetSpaceId?: string, dealValue?: number) => void;
   dismissInboundSubmission: (submissionId: string) => void;
   deleteInboundSubmission: (submissionId: string) => void;
+  clearAllInboundSubmissions: () => Promise<void>;
 
   // Integrations
   updateIntegrationsConfig: (updates: Partial<IntegrationsConfig>) => void;
@@ -1158,7 +1161,22 @@ export function CRMProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  const clearAllData = () => {
+  const clearAllInboundSubmissions = async () => {
+    setInboundSubmissions([]);
+    try {
+      localStorage.setItem(STORAGE_KEY_INBOUND, JSON.stringify([]));
+    } catch {}
+
+    const envUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || supabaseConfig.url;
+    const envKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || supabaseConfig.anonKey;
+    if (envUrl && envKey) {
+      await clearAllInboundSubmissionsFromSupabase({ url: envUrl, anonKey: envKey });
+    }
+
+    addToast('All inbound inquiries purged from workspace and Supabase cloud database!', 'info');
+  };
+
+  const clearAllData = async () => {
     setRawLeads([]);
     setRawProjects([]);
     setTeamMembers([]);
@@ -1170,7 +1188,14 @@ export function CRMProvider({ children }: { children: React.ReactNode }) {
       localStorage.setItem(STORAGE_KEY_TEAM, JSON.stringify([]));
       localStorage.setItem(STORAGE_KEY_INBOUND, JSON.stringify([]));
     } catch {}
-    addToast('All workspace data and team members cleared. Workspace is 100% clean!', 'success');
+
+    const envUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || supabaseConfig.url;
+    const envKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || supabaseConfig.anonKey;
+    if (envUrl && envKey) {
+      await clearAllSupabaseTables({ url: envUrl, anonKey: envKey });
+    }
+
+    addToast('All workspace data and Supabase cloud records cleared. Workspace is 100% clean!', 'success');
   };
 
   return (
@@ -1239,6 +1264,7 @@ export function CRMProvider({ children }: { children: React.ReactNode }) {
         convertInboundToLead,
         dismissInboundSubmission,
         deleteInboundSubmission,
+        clearAllInboundSubmissions,
         updateIntegrationsConfig,
         isNewLeadModalOpen,
         setIsNewLeadModalOpen,

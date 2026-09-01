@@ -327,3 +327,51 @@ export async function deleteInboundSubmissionFromSupabase(
   }
 }
 
+export async function clearAllInboundSubmissionsFromSupabase(
+  config: { url: string; anonKey: string }
+): Promise<boolean> {
+  if (!config.url || !config.anonKey) return false;
+  try {
+    const cleanUrl = config.url.replace(/\/+$/, '');
+    const res = await fetch(`${cleanUrl}/rest/v1/inbound_submissions?id=not.is.null`, {
+      method: 'DELETE',
+      headers: {
+        apikey: config.anonKey,
+        Authorization: `Bearer ${config.anonKey}`,
+      },
+    });
+
+    return res.ok;
+  } catch (e) {
+    console.error('Failed to clear inbound submissions from Supabase:', e);
+    return false;
+  }
+}
+
+export async function clearAllSupabaseTables(
+  config: { url: string; anonKey: string }
+): Promise<boolean> {
+  if (!config.url || !config.anonKey) return false;
+  try {
+    const cleanUrl = config.url.replace(/\/+$/, '');
+    await Promise.all([
+      fetch(`${cleanUrl}/rest/v1/inbound_submissions?id=not.is.null`, {
+        method: 'DELETE',
+        headers: { apikey: config.anonKey, Authorization: `Bearer ${config.anonKey}` },
+      }),
+      fetch(`${cleanUrl}/rest/v1/leads?id=not.is.null`, {
+        method: 'DELETE',
+        headers: { apikey: config.anonKey, Authorization: `Bearer ${config.anonKey}` },
+      }),
+      fetch(`${cleanUrl}/rest/v1/projects?id=not.is.null`, {
+        method: 'DELETE',
+        headers: { apikey: config.anonKey, Authorization: `Bearer ${config.anonKey}` },
+      }),
+    ]);
+    return true;
+  } catch (e) {
+    console.error('Failed to clear Supabase tables:', e);
+    return false;
+  }
+}
+

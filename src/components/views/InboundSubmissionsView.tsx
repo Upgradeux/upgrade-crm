@@ -38,6 +38,7 @@ export function InboundSubmissionsView() {
     convertInboundToLead,
     dismissInboundSubmission,
     deleteInboundSubmission,
+    clearAllInboundSubmissions,
     confirmAction,
     spaces,
     activeSpaceId,
@@ -227,6 +228,25 @@ async function submitProjectInquiry(data) {
           >
             Test Submission
           </Button>
+
+          {inboundSubmissions.length > 0 && (
+            <button
+              onClick={() =>
+                confirmAction({
+                  title: 'Purge All Inbound Inquiries',
+                  message: `Permanently delete all ${inboundSubmissions.length} inbound inquiries from local storage and the Supabase cloud database?`,
+                  confirmText: 'Purge All',
+                  variant: 'danger',
+                  onConfirm: () => clearAllInboundSubmissions(),
+                })
+              }
+              className="h-[26px] px-2 rounded-[4px] bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/20 text-rose-400 text-[11px] font-medium flex items-center gap-1 transition-colors cursor-pointer"
+              title="Delete all inbound inquiries from database"
+            >
+              <IconTrash size={12} />
+              <span className="hidden lg:inline">Purge All</span>
+            </button>
+          )}
         </div>
       </div>
 

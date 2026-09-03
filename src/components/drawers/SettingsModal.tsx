@@ -54,7 +54,7 @@ export function SettingsModal() {
   // Invite Team State
   const [newMemberName, setNewMemberName] = useState('');
   const [newMemberEmail, setNewMemberEmail] = useState('');
-  const [newMemberRole, setNewMemberRole] = useState<UserRole>('Cold Caller / Outreach Specialist');
+  const [newMemberRole, setNewMemberRole] = useState<UserRole>('Cold Caller');
   const [newMemberPhone, setNewMemberPhone] = useState('');
   const [isInviteFormOpen, setIsInviteFormOpen] = useState(false);
 
@@ -248,10 +248,9 @@ export function SettingsModal() {
                       value={newMemberRole}
                       onChange={(val) => setNewMemberRole(val as UserRole)}
                       options={[
-                        { value: 'Admin (Full Access)', label: 'Admin (Full Access)' },
-                        { value: 'Closer / Sales Lead', label: 'Closer / Sales Lead' },
-                        { value: 'Cold Caller / Outreach Specialist', label: 'Cold Caller / Outreach' },
-                        { value: 'Project Manager', label: 'Project Manager' },
+                        { value: 'Founder', label: 'Founder' },
+                        { value: 'Co-Founder', label: 'Co-Founder' },
+                        { value: 'Cold Caller', label: 'Cold Caller' },
                         { value: 'Developer', label: 'Developer' },
                       ]}
                       size="sm"

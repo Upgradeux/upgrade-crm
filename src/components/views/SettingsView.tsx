@@ -111,10 +111,10 @@ export function SettingsView() {
   };
 
   return (
-    <div className="flex-1 h-[calc(100vh-48px)] p-3 overflow-y-auto bg-[var(--t-background-primary)] flex flex-col gap-3 select-none">
+    <div className="flex-1 h-[calc(100vh-48px)] p-3 overflow-y-auto bg-[var(--t-background-primary)] flex flex-col gap-3">
       {/* Settings Navigation Bar */}
-      <div className="h-[38px] px-2.5 rounded-[6px] bg-[var(--t-background-secondary)] border border-[var(--t-border-color-light)] flex items-center justify-between gap-2.5 shrink-0">
-        <div className="flex items-center gap-1">
+      <div className="p-2 sm:px-2.5 sm:py-1.5 rounded-[6px] bg-[var(--t-background-secondary)] border border-[var(--t-border-color-light)] flex items-center justify-between gap-2 shrink-0 overflow-x-auto">
+        <div className="flex items-center gap-1 overflow-x-auto pb-0.5 sm:pb-0">
           {[
             { id: 'profile', label: 'Agency Profile', icon: <IconBuilding size={13} /> },
             { id: 'integrations', label: 'Integrations & Tools', icon: <IconPlug size={13} /> },
@@ -125,7 +125,7 @@ export function SettingsView() {
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id as any)}
-              className={`h-[24px] px-2 rounded-[4px] text-[11.5px] font-medium transition-colors cursor-pointer flex items-center gap-1.5 ${
+              className={`h-[26px] px-2 sm:px-2.5 rounded-[4px] text-[11px] sm:text-[11.5px] font-medium transition-colors cursor-pointer flex items-center gap-1.5 whitespace-nowrap shrink-0 ${
                 activeTab === tab.id
                   ? 'bg-[var(--t-btn-primary-bg)] text-[var(--t-btn-primary-text)] font-semibold shadow-2xs'
                   : 'text-[var(--t-font-color-secondary)] hover:text-[var(--t-font-color-primary)] hover:bg-[var(--t-background-transparent-light)]'
@@ -137,7 +137,7 @@ export function SettingsView() {
           ))}
         </div>
 
-        <div className="text-[11px] font-mono text-[var(--t-font-color-tertiary)] hidden sm:inline">
+        <div className="text-[11px] font-mono text-[var(--t-font-color-tertiary)] hidden md:inline shrink-0">
           upgradeUX Workspace v3.0 ({currency})
         </div>
       </div>
@@ -171,7 +171,7 @@ export function SettingsView() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="text-[10.5px] font-semibold text-[var(--t-font-color-tertiary)] uppercase tracking-wider block mb-1">
                     Agency Display Name
@@ -197,7 +197,7 @@ export function SettingsView() {
               </div>
 
               {/* Indian Currency & India Timezone Pickers */}
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="text-[10.5px] font-semibold text-[var(--t-font-color-tertiary)] uppercase tracking-wider block mb-1">
                     Default Pipeline Currency
@@ -271,7 +271,7 @@ export function SettingsView() {
                 </a>
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="text-[10px] font-semibold text-[var(--t-font-color-tertiary)] uppercase tracking-wider block mb-1">
                     Cal.com Username / Event Slug
@@ -334,7 +334,7 @@ export function SettingsView() {
                 </span>
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="text-[10px] font-semibold text-[var(--t-font-color-tertiary)] uppercase tracking-wider block mb-1">
                     Agency Outreach & Reply-To Email

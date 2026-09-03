@@ -4,16 +4,25 @@ import React, { useState } from 'react';
 import { useCRM } from '@/lib/store';
 import { Lead, LeadStatus } from '@/types/crm';
 import { Badge } from '../ui/Badge';
-import { formatCurrency, formatDate } from '@/lib/utils';
-import { IconVideo } from '@tabler/icons-react';
+import { formatCurrency, formatDate, matchLeadSearch } from '@/lib/utils';
+import { IconVideo, IconSearch, IconClock } from '@tabler/icons-react';
+import { Input } from '../ui/Input';
 
-const COLUMNS: Array<{ status: LeadStatus; label: string; dotColor: string }> = [
+interface PipelineColumn {
+  status: LeadStatus;
+  label: string;
+  dotColor: string;
+  altStatuses?: LeadStatus[];
+}
+
+const COLUMNS: PipelineColumn[] = [
+  { status: 'Leads', label: 'Leads', dotColor: 'bg-indigo-500' },
   { status: 'Not Contacted', label: 'Not Contacted', dotColor: 'bg-amber-500' },
   { status: 'Contacted', label: 'Contacted', dotColor: 'bg-sky-500' },
-  { status: 'Booked Call', label: 'Booked Meeting', dotColor: 'bg-blue-500' },
-  { status: 'In Processing / Proposal', label: 'Proposal Sent', dotColor: 'bg-purple-500' },
-  { status: 'Won', label: 'Won', dotColor: 'bg-emerald-500' },
+  { status: 'Booked Meeting', label: 'Booked Meeting', dotColor: 'bg-blue-500', altStatuses: ['Booked Call'] },
+  { status: 'Proposal Sent', label: 'Proposal Sent', dotColor: 'bg-purple-500', altStatuses: ['In Processing / Proposal'] },
   { status: 'Lost', label: 'Lost', dotColor: 'bg-rose-500' },
+  { status: 'Won', label: 'Won', dotColor: 'bg-emerald-500' },
 ];
 
 export function PipelineView() {
@@ -21,6 +30,7 @@ export function PipelineView() {
     leads,
     moveLeadStatus,
     openLeadDrawer,
+    setFollowUpModalLead,
     activeSpaceId,
     currency,
     timezone,
@@ -28,6 +38,7 @@ export function PipelineView() {
 
   const [draggedLeadId, setDraggedLeadId] = useState<string | null>(null);
   const [dragOverCol, setDragOverCol] = useState<string | null>(null);
+  const [search, setSearch] = useState('');
 
   const handleDragStart = (id: string) => {
     setDraggedLeadId(id);
@@ -52,24 +63,49 @@ export function PipelineView() {
   };
 
   return (
-    <div className="flex-1 h-[calc(100vh-48px)] p-3 overflow-x-auto overflow-y-hidden bg-[var(--t-background-tertiary)] flex gap-2.5 select-none">
-      {COLUMNS.map((col) => {
-        const columnLeads = leads.filter((l) => l.status === col.status);
-        const columnTotal = columnLeads.reduce((acc, curr) => acc + (curr.dealValue || 0), 0);
-        const isTarget = dragOverCol === col.status;
+    <div className="flex-1 h-[calc(100vh-48px)] p-3 overflow-hidden bg-[var(--t-background-tertiary)] flex flex-col gap-2.5">
+      {/* Top Search Bar */}
+      <div className="p-2 sm:px-2.5 sm:py-1.5 rounded-[6px] bg-[var(--t-background-secondary)] border border-[var(--t-border-color-light)] flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 shrink-0">
+        <div className="w-full sm:w-[260px]">
+          <Input
+            placeholder="Search pipeline (phone, link, handle, name)..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            leftIcon={<IconSearch size={13} />}
+            className="h-6.5 text-[12px] bg-[var(--t-background-primary)] w-full"
+          />
+        </div>
+        <div className="text-[11px] font-mono text-[var(--t-font-color-tertiary)] flex items-center justify-between sm:justify-end gap-2">
+          <span>Total Pipeline:</span>
+          <span className="text-[var(--t-font-color-primary)] font-semibold">
+            {formatCurrency(leads.reduce((a, b) => a + (b.dealValue || 0), 0), currency)}
+          </span>
+        </div>
+      </div>
 
-        return (
-          <div
-            key={col.status}
-            onDragOver={(e) => handleDragOver(e, col.status)}
-            onDragLeave={handleDragLeave}
-            onDrop={(e) => handleDrop(e, col.status)}
-            className={`w-[270px] shrink-0 h-full flex flex-col rounded-[6px] bg-[var(--t-background-primary)] border transition-colors ${
-              isTarget
-                ? 'border-[var(--t-border-color-focus)] bg-[var(--t-background-transparent-lighter)]'
-                : 'border-[var(--t-border-color-light)]'
-            }`}
-          >
+      {/* Kanban Columns with mobile snap-scrolling */}
+      <div className="flex-1 flex gap-2.5 overflow-x-auto overflow-y-hidden pb-1 snap-x snap-mandatory">
+        {COLUMNS.map((col) => {
+          const columnLeads = leads.filter(
+            (l) =>
+              (l.status === col.status || (col.altStatuses && col.altStatuses.includes(l.status))) &&
+              matchLeadSearch(l, search)
+          );
+          const columnTotal = columnLeads.reduce((acc, curr) => acc + (curr.dealValue || 0), 0);
+          const isTarget = dragOverCol === col.status;
+
+          return (
+            <div
+              key={col.status}
+              onDragOver={(e) => handleDragOver(e, col.status)}
+              onDragLeave={handleDragLeave}
+              onDrop={(e) => handleDrop(e, col.status)}
+              className={`w-[85vw] sm:w-[270px] shrink-0 h-full flex flex-col rounded-[6px] bg-[var(--t-background-primary)] border transition-colors snap-center ${
+                isTarget
+                  ? 'border-[var(--t-border-color-focus)] bg-[var(--t-background-transparent-lighter)]'
+                  : 'border-[var(--t-border-color-light)]'
+              }`}
+            >
             {/* Column Header */}
             <div className="p-2.5 border-b border-[var(--t-border-color-light)] flex items-center justify-between shrink-0 bg-[var(--t-background-secondary)]">
               <div className="flex items-center gap-1.5">
@@ -113,19 +149,35 @@ export function PipelineView() {
                   {/* Badges */}
                   <div className="flex items-center gap-1.5 flex-wrap">
                     <Badge value={lead.source || 'Google Maps'} size="sm" />
-                    <Badge variant="service" size="sm">
-                      {lead.serviceInterest}
-                    </Badge>
+                    {(lead.services && lead.services.length > 0 ? lead.services : [lead.serviceInterest]).map((svc, sIdx) => (
+                      <Badge key={sIdx} variant="service" size="sm">
+                        {svc}
+                      </Badge>
+                    ))}
                     {activeSpaceId === 'all' && lead.industry && (
                       <span className="px-1.5 py-0.2 rounded-[3px] bg-indigo-500/10 text-indigo-400 font-mono text-[9.5px] border border-indigo-500/20 truncate max-w-[110px]">
                         {lead.industry.split(' ')[0]}
                       </span>
                     )}
+                    {lead.activeFollowUp && !lead.activeFollowUp.completed && (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setFollowUpModalLead(lead);
+                        }}
+                        className="px-1.5 py-0.2 rounded-[3px] bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/30 text-amber-400 font-mono text-[9.5px] flex items-center gap-1 transition-colors cursor-pointer"
+                        title={`Follow-Up: ${lead.activeFollowUp.channel}`}
+                      >
+                        <IconClock size={9} />
+                        <span>{lead.activeFollowUp.channel}</span>
+                      </button>
+                    )}
                   </div>
 
                   {/* Card Footer */}
                   <div className="pt-1 border-t border-[var(--t-border-color-light)] flex items-center justify-between text-[10.5px] text-[var(--t-font-color-tertiary)]">
-                    <span className="truncate max-w-[120px]">
+                    <span className="truncate max-w-[110px]">
                       {lead.contactName || lead.location}
                     </span>
 
@@ -157,6 +209,7 @@ export function PipelineView() {
           </div>
         );
       })}
+      </div>
     </div>
   );
 }

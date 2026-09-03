@@ -19,9 +19,11 @@ import {
   IconBrandWhatsapp,
   IconBrandX,
   IconMail,
+  IconSearch,
 } from '@tabler/icons-react';
-import { formatCurrency, getGoogleMapsUrl, getTwitterUrl } from '@/lib/utils';
+import { formatCurrency, getGoogleMapsUrl, getTwitterUrl, matchLeadSearch } from '@/lib/utils';
 import { Modal } from '../ui/Modal';
+import { Input } from '../ui/Input';
 
 export function NeedsOutreachView() {
   const {
@@ -39,10 +41,13 @@ export function NeedsOutreachView() {
 
   const [aiPitchLead, setAiPitchLead] = useState<Lead | null>(null);
   const [copiedPitch, setCopiedPitch] = useState(false);
+  const [search, setSearch] = useState('');
 
-  // Cold leads queue: outreachStage is Needs Outreach or status is Not Contacted
+  // Cold leads queue: outreachStage is Needs Outreach or status is Leads / Not Contacted
   const coldLeads = leads.filter(
-    (l) => l.outreachStage === 'Needs Outreach' || l.status === 'Not Contacted'
+    (l) =>
+      (l.outreachStage === 'Needs Outreach' || l.status === 'Leads' || l.status === 'Not Contacted') &&
+      matchLeadSearch(l, search)
   );
 
   const generatePitchText = (lead: Lead) => {
@@ -64,22 +69,25 @@ export function NeedsOutreachView() {
   };
 
   return (
-    <div className="flex-1 h-[calc(100vh-48px)] p-3 overflow-y-auto bg-[var(--t-background-primary)] flex flex-col gap-2.5 select-none">
-      {/* Header Banner */}
-      <div className="h-[38px] px-3 rounded-[6px] bg-[var(--t-background-secondary)] border border-[var(--t-border-color-light)] flex items-center justify-between flex-wrap gap-2 shrink-0">
-        <div className="flex items-center gap-2">
-          <span className="text-[12px] font-medium text-[var(--t-font-color-primary)]">
-            Cold Prospects Queue ({coldLeads.length})
-          </span>
-          <span className="text-[11px] text-[var(--t-font-color-tertiary)] hidden sm:inline">
-            • Leads from Google Maps, Instagram & LinkedIn
-          </span>
+    <div className="flex-1 h-[calc(100vh-48px)] p-3 overflow-y-auto bg-[var(--t-background-primary)] flex flex-col gap-2.5">
+      {/* Header Banner & Search */}
+      <div className="p-2 sm:px-2.5 sm:py-1.5 rounded-[6px] bg-[var(--t-background-secondary)] border border-[var(--t-border-color-light)] flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 shrink-0">
+        <div className="flex-1 min-w-0 sm:max-w-[280px]">
+          <Input
+            placeholder="Search by phone, name, email, link, handle..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            leftIcon={<IconSearch size={13} />}
+            className="h-6.5 text-[12px] bg-[var(--t-background-primary)] w-full"
+          />
         </div>
-        <div className="text-[11px] font-mono text-[var(--t-font-color-tertiary)]">
-          Total Opportunity:{' '}
-          <span className="text-[var(--t-font-color-primary)]">
-            {formatCurrency(coldLeads.reduce((a, b) => a + (b.dealValue || 0), 0), currency)}
+        <div className="flex items-center justify-between sm:justify-end gap-3 shrink-0 text-[11.5px]">
+          <span className="font-medium text-[var(--t-font-color-primary)]">
+            Cold Queue ({coldLeads.length})
           </span>
+          <div className="text-[11px] font-mono text-[var(--t-font-color-tertiary)] shrink-0">
+            Total: <span className="text-[var(--t-font-color-primary)] font-semibold">{formatCurrency(coldLeads.reduce((a, b) => a + (b.dealValue || 0), 0), currency)}</span>
+          </div>
         </div>
       </div>
 

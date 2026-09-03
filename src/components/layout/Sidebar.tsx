@@ -21,6 +21,9 @@ import {
   IconUsers,
   IconInbox,
   IconLogout,
+  IconClock,
+  IconListCheck,
+  IconX,
 } from '@tabler/icons-react';
 import { cn, getInitials } from '@/lib/utils';
 import { Button } from '../ui/Button';
@@ -29,8 +32,11 @@ export function Sidebar() {
   const {
     currentView,
     setCurrentView,
+    isMobileMenuOpen,
+    setIsMobileMenuOpen,
     leads,
     projects,
+    tasks,
     teamMembers,
     inboundSubmissions,
     agencyName,
@@ -48,7 +54,7 @@ export function Sidebar() {
   const inboundNewCount = inboundSubmissions?.filter((s) => s.status === 'new').length || 0;
 
   const needsOutreachCount = leads.filter(
-    (l) => l.outreachStage === 'Needs Outreach' || l.status === 'Not Contacted'
+    (l) => l.outreachStage === 'Needs Outreach' || l.status === 'Leads' || l.status === 'Not Contacted'
   ).length;
 
   const contactedCount = leads.filter(
@@ -58,6 +64,18 @@ export function Sidebar() {
   const activeProjectsCount = projects.filter(
     (p) => p.status !== 'Live / Deployed'
   ).length;
+
+  const activeFollowUpsCount = leads.filter(
+    (l) => l.activeFollowUp && !l.activeFollowUp.completed
+  ).length;
+
+  const dueOrOverdueFollowUpsCount = leads.filter((l) => {
+    if (!l.activeFollowUp || l.activeFollowUp.completed) return false;
+    const endOfToday = new Date().setHours(23, 59, 59, 999);
+    return new Date(l.activeFollowUp.scheduledDate).getTime() <= endOfToday;
+  }).length;
+
+  const pendingTasksCount = tasks?.filter((t) => !t.completed).length || 0;
 
   const navItems: Array<{
     id: CRMView;
@@ -91,6 +109,19 @@ export function Sidebar() {
       label: 'Contacted Leads',
       icon: <IconUsersGroup size={15} stroke={1.75} />,
       badge: contactedCount,
+    },
+    {
+      id: 'follow-ups',
+      label: 'Follow-Up Queue',
+      icon: <IconClock size={15} stroke={1.75} />,
+      badge: activeFollowUpsCount,
+      badgeColor: dueOrOverdueFollowUpsCount > 0 ? 'bg-amber-500/20 text-amber-400 font-semibold' : undefined,
+    },
+    {
+      id: 'tasks-notes',
+      label: 'Tasks & Notes',
+      icon: <IconListCheck size={15} stroke={1.75} />,
+      badge: pendingTasksCount,
     },
     {
       id: 'all-leads',
@@ -127,13 +158,17 @@ export function Sidebar() {
     },
   ];
 
-  return (
-    <aside className="w-[220px] h-screen bg-[var(--t-background-secondary)] border-r border-[var(--t-border-color-light)] flex flex-col justify-between select-none shrink-0 z-20">
+  const handleNavClick = (viewId: CRMView) => {
+    setCurrentView(viewId);
+    setIsMobileMenuOpen(false);
+  };
+
+  const renderSidebarContent = (isMobile = false) => (
+    <div className="flex flex-col justify-between h-full">
       {/* Top Workspace Header */}
       <div className="flex flex-col">
         <div className="h-[48px] px-3 flex items-center justify-between border-b border-[var(--t-border-color-light)]">
           <div className="flex items-center gap-2 overflow-hidden">
-            {/* upgradeUX Official Logo (Clean, No Box/Border) */}
             <img
               src="/logo.png"
               alt="upgradeUX"
@@ -149,13 +184,28 @@ export function Sidebar() {
             </div>
           </div>
 
-          <button
-            onClick={() => setCurrentView('settings')}
-            title="Workspace Settings"
-            className="w-[24px] h-[24px] rounded-[4px] flex items-center justify-center text-[var(--t-font-color-tertiary)] hover:text-[var(--t-font-color-primary)] hover:bg-[var(--t-background-transparent-light)] transition-colors cursor-pointer"
-          >
-            <IconSettings size={14} />
-          </button>
+          <div className="flex items-center gap-1">
+            <button
+              onClick={() => {
+                setCurrentView('settings');
+                if (isMobile) setIsMobileMenuOpen(false);
+              }}
+              title="Workspace Settings"
+              className="w-[24px] h-[24px] rounded-[4px] flex items-center justify-center text-[var(--t-font-color-tertiary)] hover:text-[var(--t-font-color-primary)] hover:bg-[var(--t-background-transparent-light)] transition-colors cursor-pointer"
+            >
+              <IconSettings size={14} />
+            </button>
+
+            {isMobile && (
+              <button
+                onClick={() => setIsMobileMenuOpen(false)}
+                title="Close Menu"
+                className="w-[24px] h-[24px] rounded-[4px] flex items-center justify-center text-[var(--t-font-color-tertiary)] hover:text-[var(--t-font-color-primary)] hover:bg-[var(--t-background-transparent-light)] transition-colors cursor-pointer"
+              >
+                <IconX size={16} />
+              </button>
+            )}
+          </div>
         </div>
 
         {/* Quick Action: Add Client Lead Button */}
@@ -165,7 +215,10 @@ export function Sidebar() {
             size="md"
             className="w-full justify-start text-[12px]"
             leftIcon={<IconPlus size={14} />}
-            onClick={() => setIsNewLeadModalOpen(true)}
+            onClick={() => {
+              setIsNewLeadModalOpen(true);
+              if (isMobile) setIsMobileMenuOpen(false);
+            }}
           >
             Add Client Lead
           </Button>
@@ -177,15 +230,15 @@ export function Sidebar() {
         </div>
 
         {/* Navigation Links */}
-        <nav className="flex flex-col gap-[1px] px-1.5">
+        <nav className="flex flex-col gap-[1px] px-1.5 overflow-y-auto max-h-[calc(100vh-240px)]">
           {navItems.map((item) => {
             const isActive = currentView === item.id;
             return (
               <button
                 key={item.id}
-                onClick={() => setCurrentView(item.id)}
+                onClick={() => handleNavClick(item.id)}
                 className={cn(
-                  'w-full h-[30px] px-2 rounded-[5px] flex items-center justify-between text-[11.5px] transition-colors cursor-pointer group',
+                  'w-full h-[32px] sm:h-[30px] px-2 rounded-[5px] flex items-center justify-between text-[12px] sm:text-[11.5px] transition-colors cursor-pointer group',
                   isActive
                     ? 'bg-[var(--t-background-transparent-medium)] text-[var(--t-font-color-primary)] font-medium'
                     : 'text-[var(--t-font-color-secondary)] hover:text-[var(--t-font-color-primary)] hover:bg-[var(--t-background-transparent-light)]'
@@ -283,6 +336,28 @@ export function Sidebar() {
           </div>
         </div>
       </div>
-    </aside>
+    </div>
+  );
+
+  return (
+    <>
+      {/* Desktop Sidebar */}
+      <aside className="hidden md:flex w-[220px] h-screen bg-[var(--t-background-secondary)] border-r border-[var(--t-border-color-light)] flex-col justify-between select-none shrink-0 z-20">
+        {renderSidebarContent(false)}
+      </aside>
+
+      {/* Mobile Slide-Over Drawer */}
+      {isMobileMenuOpen && (
+        <div className="fixed inset-0 z-50 flex md:hidden animate-fade-in">
+          <div
+            className="fixed inset-0 bg-black/60 backdrop-blur-xs transition-opacity"
+            onClick={() => setIsMobileMenuOpen(false)}
+          />
+          <aside className="relative w-[280px] max-w-[85vw] bg-[var(--t-background-secondary)] border-r border-[var(--t-border-color-medium)] flex flex-col justify-between select-none h-full shadow-2xl z-10 animate-slide-right">
+            {renderSidebarContent(true)}
+          </aside>
+        </div>
+      )}
+    </>
   );
 }

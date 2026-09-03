@@ -29,7 +29,7 @@ import {
   IconFileText,
   IconExternalLink,
 } from '@tabler/icons-react';
-import { formatDate } from '@/lib/utils';
+import { formatDate, matchSubmissionSearch } from '@/lib/utils';
 
 export function InboundSubmissionsView() {
   const {
@@ -44,9 +44,8 @@ export function InboundSubmissionsView() {
     activeSpaceId,
     setWhatsAppLeadModal,
     setEmailComposerLeadModal,
-    timezone,
-    currency,
     addToast,
+    timezone,
   } = useCRM();
 
   const [search, setSearch] = useState('');
@@ -59,13 +58,7 @@ export function InboundSubmissionsView() {
   const [convertDealValue, setConvertDealValue] = useState(150000);
 
   const filteredSubmissions = inboundSubmissions.filter((sub) => {
-    const matchesSearch =
-      !search ||
-      sub.name.toLowerCase().includes(search.toLowerCase()) ||
-      sub.email.toLowerCase().includes(search.toLowerCase()) ||
-      sub.message.toLowerCase().includes(search.toLowerCase()) ||
-      sub.interests.some((i: string) => i.toLowerCase().includes(search.toLowerCase()));
-
+    const matchesSearch = matchSubmissionSearch(sub, search);
     const matchesStatus = statusFilter === 'all' || sub.status === statusFilter;
     const matchesSource = sourceFilter === 'all' || sub.source === sourceFilter;
     return matchesSearch && matchesStatus && matchesSource;
@@ -147,11 +140,12 @@ async function submitProjectInquiry(data) {
 }`;
 
   return (
-    <div className="flex-1 flex flex-col h-[calc(100vh-48px)] bg-[var(--t-background-primary)] overflow-hidden select-none">
+    <div className="flex-1 flex flex-col h-[calc(100vh-48px)] bg-[var(--t-background-primary)] overflow-hidden">
       {/* Twenty CRM Sleek Subheader Toolbar */}
-      <div className="h-[44px] px-3.5 border-b border-[var(--t-border-color-light)] flex items-center justify-between shrink-0 bg-[var(--t-background-secondary)] gap-2">
-        {/* Left: View Title & Segmented Status Filters */}
-        <div className="flex items-center gap-3 min-w-0">
+      {/* Twenty CRM Sleek Subheader Toolbar */}
+      <div className="min-h-[44px] py-1.5 px-3 sm:px-3.5 border-b border-[var(--t-border-color-light)] flex flex-col sm:flex-row sm:items-center sm:justify-between shrink-0 bg-[var(--t-background-secondary)] gap-2">
+        {/* Left / Row 1: View Title & Segmented Status Filters */}
+        <div className="flex items-center justify-between sm:justify-start gap-2 sm:gap-3 min-w-0">
           <div className="flex items-center gap-1.5 shrink-0">
             <IconInbox size={14} className="text-[#5d4ef7]" />
             <span className="text-[12.5px] font-medium text-[var(--t-font-color-primary)]">
@@ -162,10 +156,10 @@ async function submitProjectInquiry(data) {
             </span>
           </div>
 
-          <div className="h-3.5 w-[1px] bg-[var(--t-border-color-light)]" />
+          <div className="h-3.5 w-[1px] bg-[var(--t-border-color-light)] hidden sm:block" />
 
           {/* Twenty Segmented Filter Pills */}
-          <div className="flex items-center gap-0.5 bg-[var(--t-background-primary)] p-0.5 rounded-[5px] border border-[var(--t-border-color-light)]">
+          <div className="flex items-center gap-0.5 bg-[var(--t-background-primary)] p-0.5 rounded-[5px] border border-[var(--t-border-color-light)] overflow-x-auto">
             {[
               { id: 'all', label: 'All', count: countAll },
               { id: 'new', label: 'New', count: countNew, highlight: countNew > 0 },
@@ -175,7 +169,7 @@ async function submitProjectInquiry(data) {
               <button
                 key={tab.id}
                 onClick={() => setStatusFilter(tab.id as any)}
-                className={`h-[22px] px-2 rounded-[3px] text-[11px] font-medium transition-colors flex items-center gap-1 cursor-pointer ${
+                className={`h-[22px] px-2 rounded-[3px] text-[11px] font-medium transition-colors flex items-center gap-1 cursor-pointer whitespace-nowrap ${
                   statusFilter === tab.id
                     ? 'bg-[var(--t-background-secondary)] text-[var(--t-font-color-primary)] shadow-2xs font-semibold'
                     : 'text-[var(--t-font-color-tertiary)] hover:text-[var(--t-font-color-primary)]'
@@ -198,22 +192,22 @@ async function submitProjectInquiry(data) {
           </div>
         </div>
 
-        {/* Right: Search & Actions */}
-        <div className="flex items-center gap-1.5 shrink-0">
-          <div className="relative">
+        {/* Right / Row 2: Search & Actions */}
+        <div className="flex items-center gap-1.5 shrink-0 justify-between sm:justify-end">
+          <div className="relative flex-1 sm:flex-initial">
             <input
               type="text"
               placeholder="Search inquiries..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="h-[26px] w-[160px] pl-6 pr-2 text-[11px] bg-[var(--t-background-primary)] border border-[var(--t-border-color-light)] focus:border-[var(--t-border-color-focus)] rounded-[4px] outline-none text-[var(--t-font-color-primary)] placeholder-[var(--t-font-color-tertiary)]"
+              className="h-[26px] w-full sm:w-[160px] pl-6 pr-2 text-[11px] bg-[var(--t-background-primary)] border border-[var(--t-border-color-light)] focus:border-[var(--t-border-color-focus)] rounded-[4px] outline-none text-[var(--t-font-color-primary)] placeholder-[var(--t-font-color-tertiary)]"
             />
             <IconSearch size={11} className="absolute left-2 top-2 text-[var(--t-font-color-tertiary)] pointer-events-none" />
           </div>
 
           <button
             onClick={() => setIsCodeModalOpen(true)}
-            className="h-[26px] px-2.5 rounded-[4px] bg-[var(--t-background-primary)] hover:bg-[var(--t-background-transparent-light)] border border-[var(--t-border-color-light)] text-[11px] font-medium text-[var(--t-font-color-secondary)] hover:text-[var(--t-font-color-primary)] flex items-center gap-1.5 transition-colors cursor-pointer"
+            className="h-[26px] px-2 sm:px-2.5 rounded-[4px] bg-[var(--t-background-primary)] hover:bg-[var(--t-background-transparent-light)] border border-[var(--t-border-color-light)] text-[11px] font-medium text-[var(--t-font-color-secondary)] hover:text-[var(--t-font-color-primary)] flex items-center gap-1.5 transition-colors cursor-pointer shrink-0"
             title="View API integration code snippet"
           >
             <IconCode size={12} />
@@ -225,8 +219,10 @@ async function submitProjectInquiry(data) {
             size="sm"
             leftIcon={<IconSparkles size={12} />}
             onClick={handleSimulateTest}
+            className="h-[26px] text-[11px] px-2 sm:px-3 shrink-0"
           >
-            Test Submission
+            <span className="hidden xs:inline">Test Submission</span>
+            <span className="xs:hidden">Test</span>
           </Button>
 
           {inboundSubmissions.length > 0 && (

@@ -64,7 +64,12 @@ export function Badge({
   }
 
   // Lead & Project Statuses
-  else if (value === 'Not Contacted' || value === 'Needs Outreach' || value === 'Discovery') {
+  else if (value === 'Leads') {
+    bg = 'bg-indigo-500/10 dark:bg-indigo-500/15';
+    text = 'text-indigo-700 dark:text-indigo-400';
+    border = 'border-indigo-500/20';
+    dotColor = 'bg-indigo-500';
+  } else if (value === 'Not Contacted' || value === 'Needs Outreach' || value === 'Discovery') {
     bg = 'bg-amber-500/10 dark:bg-amber-500/15';
     text = 'text-amber-700 dark:text-amber-400';
     border = 'border-amber-500/20';
@@ -74,12 +79,12 @@ export function Badge({
     text = 'text-sky-700 dark:text-sky-400';
     border = 'border-sky-500/20';
     dotColor = 'bg-sky-500';
-  } else if (value === 'Booked Call' || value === 'In Build' || value === 'Follow-Up Needed') {
+  } else if (value === 'Booked Meeting' || value === 'Booked Call' || value === 'In Build' || value === 'Follow-Up Needed') {
     bg = 'bg-blue-500/10 dark:bg-blue-500/15';
     text = 'text-blue-700 dark:text-blue-400';
     border = 'border-blue-500/20';
     dotColor = 'bg-blue-500';
-  } else if (value === 'In Processing / Proposal' || value === 'Design & Specs') {
+  } else if (value === 'Proposal Sent' || value === 'In Processing / Proposal' || value === 'Design & Specs') {
     bg = 'bg-purple-500/10 dark:bg-purple-500/15';
     text = 'text-purple-700 dark:text-purple-400';
     border = 'border-purple-500/20';

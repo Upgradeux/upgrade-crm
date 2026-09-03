@@ -23,22 +23,26 @@ import {
   IconSparkles,
   IconChevronDown,
 } from '@tabler/icons-react';
-import { formatCurrency, formatDate } from '@/lib/utils';
+import { formatCurrency, formatDate, matchProjectSearch } from '@/lib/utils';
 
 export function ProjectsView() {
   const {
     projects,
+    addProject,
     updateProject,
     deleteProject,
-    confirmAction,
-    toggleMilestone,
     addMilestone,
+    toggleMilestone,
     deleteMilestone,
-    setIsNewProjectModalOpen,
-    setCurrentView,
+    projectsLayout,
+    setProjectsLayout,
+    activeSpaceId,
     currency,
     timezone,
     addToast,
+    confirmAction,
+    setIsNewProjectModalOpen,
+    setCurrentView,
   } = useCRM();
 
   const [statusFilter, setStatusFilter] = useState<string>('All');
@@ -50,11 +54,7 @@ export function ProjectsView() {
 
   const filteredProjects = projects.filter((p) => {
     const matchesStatus = statusFilter === 'All' || p.status === statusFilter;
-    const matchesSearch =
-      !searchQuery ||
-      p.projectName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      p.companyName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      p.serviceType.toLowerCase().includes(searchQuery.toLowerCase());
+    const matchesSearch = matchProjectSearch(p, searchQuery);
     return matchesStatus && matchesSearch;
   });
 
@@ -83,28 +83,28 @@ export function ProjectsView() {
   };
 
   return (
-    <div className="flex-1 h-[calc(100vh-48px)] p-3 overflow-hidden bg-[var(--t-background-primary)] flex flex-col gap-2 select-none">
+    <div className="flex-1 h-[calc(100vh-48px)] p-3 overflow-hidden bg-[var(--t-background-primary)] flex flex-col gap-2">
       {/* Twenty Style Filter & Search Toolbar */}
-      <div className="h-[38px] px-2.5 rounded-[6px] bg-[var(--t-background-secondary)] border border-[var(--t-border-color-light)] flex items-center justify-between gap-3 shrink-0">
-        <div className="flex items-center gap-2.5 flex-1 min-w-0">
+      <div className="p-2 sm:px-2.5 sm:py-1.5 rounded-[6px] bg-[var(--t-background-secondary)] border border-[var(--t-border-color-light)] flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 shrink-0">
+        <div className="flex flex-col sm:flex-row sm:items-center gap-2 flex-1 min-w-0">
           {/* Quick Search */}
-          <div className="w-[180px] sm:w-[220px]">
+          <div className="w-full sm:w-[220px]">
             <Input
               placeholder="Filter deliverables..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               leftIcon={<IconSearch size={13} />}
-              className="h-[26px] text-[12px] bg-[var(--t-background-primary)]"
+              className="h-[26px] text-[12px] bg-[var(--t-background-primary)] w-full"
             />
           </div>
 
           {/* Minimalist Filter Pills */}
-          <div className="hidden md:flex items-center gap-1">
+          <div className="flex items-center gap-1 overflow-x-auto pb-0.5 sm:pb-0">
             {['All', 'In Build', 'Design & Specs', 'Testing & QA', 'Live / Deployed'].map((status) => (
               <button
                 key={status}
                 onClick={() => setStatusFilter(status)}
-                className={`h-[24px] px-2 rounded-[4px] text-[11px] font-medium transition-colors cursor-pointer ${
+                className={`h-[24px] px-2 rounded-[4px] text-[11px] font-medium transition-colors cursor-pointer whitespace-nowrap ${
                   statusFilter === status
                     ? 'bg-[var(--t-btn-primary-bg)] text-[var(--t-btn-primary-text)] font-semibold shadow-2xs'
                     : 'text-[var(--t-font-color-secondary)] hover:text-[var(--t-font-color-primary)] hover:bg-[var(--t-background-transparent-light)]'
@@ -117,10 +117,10 @@ export function ProjectsView() {
         </div>
 
         {/* Pipeline Summary & Quick Create */}
-        <div className="flex items-center gap-3 shrink-0">
-          <span className="text-[11px] text-[var(--t-font-color-tertiary)] font-mono hidden sm:inline">
+        <div className="flex items-center justify-between sm:justify-end gap-3 shrink-0">
+          <span className="text-[11px] text-[var(--t-font-color-tertiary)] font-mono">
             {activeBuilds} active •{' '}
-            <span className="text-[var(--t-font-color-primary)]">
+            <span className="text-[var(--t-font-color-primary)] font-semibold">
               {formatCurrency(totalContractBudget, currency)}
             </span>
           </span>
@@ -128,10 +128,11 @@ export function ProjectsView() {
           <Button
             variant="primary"
             size="sm"
-            leftIcon={<IconPlus size={12} />}
+            leftIcon={<IconPlus size={13} />}
             onClick={() => setIsNewProjectModalOpen(true)}
+            className="h-[26px] text-[11px]"
           >
-            New Deliverable
+            New Project
           </Button>
         </div>
       </div>

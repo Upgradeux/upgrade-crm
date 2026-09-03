@@ -90,17 +90,17 @@ export function AnalyticsView() {
     },
     {
       stage: 'Contacted',
-      count: leads.filter((l) => l.status !== 'Not Contacted').length,
+      count: leads.filter((l) => l.status !== 'Not Contacted' && l.status !== 'Leads').length,
       label: 'Initial Outreach',
     },
     {
       stage: 'Meeting',
-      count: leads.filter((l) => l.status === 'Booked Call' || l.status === 'In Processing / Proposal' || l.status === 'Won').length,
+      count: leads.filter((l) => l.status === 'Booked Meeting' || l.status === 'Booked Call' || l.status === 'Proposal Sent' || l.status === 'In Processing / Proposal' || l.status === 'Won').length,
       label: 'Demo Scheduled',
     },
     {
       stage: 'Proposal',
-      count: leads.filter((l) => l.status === 'In Processing / Proposal' || l.status === 'Won').length,
+      count: leads.filter((l) => l.status === 'Proposal Sent' || l.status === 'In Processing / Proposal' || l.status === 'Won').length,
       label: 'Proposal Active',
     },
     {
@@ -131,7 +131,7 @@ export function AnalyticsView() {
   };
 
   return (
-    <div className="flex-1 h-[calc(100vh-48px)] p-3 overflow-y-auto bg-[var(--t-background-primary)] flex flex-col gap-3 select-none">
+    <div className="flex-1 h-[calc(100vh-48px)] p-3 overflow-y-auto bg-[var(--t-background-primary)] flex flex-col gap-3">
       {/* Top 4 KPI Metrics (Twenty High-Density Cards) */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5">
         {/* KPI 1: Pipeline Value */}

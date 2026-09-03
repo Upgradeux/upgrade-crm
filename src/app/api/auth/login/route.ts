@@ -12,18 +12,34 @@ export async function POST(req: NextRequest) {
     }
 
     const adminEmail = (process.env.ADMIN_EMAIL || '').trim().toLowerCase();
-    const adminPassword = process.env.ADMIN_PASSWORD || '';
+    const adminPassword = process.env.ADMIN_PASSWORD || 'Upgradeuxcrm@leads';
+    const swapnilPassword = process.env.SWAPNIL_PASSWORD || 'Upgradeux@swapnil2026';
+    const surajPassword = process.env.SURAJ_PASSWORD || 'Upgradeux@suraj2026';
 
     const inputEmail = email.trim().toLowerCase();
     const inputPassword = password;
 
-    // Validate credentials strictly on the server against environment variables
-    if (
-      !adminEmail ||
-      !adminPassword ||
-      inputEmail !== adminEmail ||
-      inputPassword !== adminPassword
-    ) {
+    const FOUNDERS: Record<string, { name: string; memberId: string; validPasswords: string[] }> = {
+      'skalambe520@gmail.com': {
+        name: 'Swapnil',
+        memberId: 'member-swapnil',
+        validPasswords: [swapnilPassword, adminPassword],
+      },
+      'iamsurajsavle@gmail.com': {
+        name: 'Suraj',
+        memberId: 'member-suraj',
+        validPasswords: [surajPassword, adminPassword],
+      },
+      'upgradeux.agency@gmail.com': {
+        name: 'Swapnil',
+        memberId: 'member-swapnil',
+        validPasswords: [adminPassword, swapnilPassword],
+      },
+    };
+
+    const founderInfo = FOUNDERS[inputEmail];
+
+    if (!founderInfo || !founderInfo.validPasswords.includes(inputPassword)) {
       return NextResponse.json(
         { error: 'Invalid email or password. Access denied.' },
         { status: 401 }
@@ -34,8 +50,9 @@ export async function POST(req: NextRequest) {
     const sessionToken = Buffer.from(
       JSON.stringify({
         email: inputEmail,
-        name: 'upgradeUX Admin',
-        role: 'superadmin',
+        name: founderInfo.name,
+        memberId: founderInfo.memberId,
+        role: 'Founder',
         issuedAt: Date.now(),
       })
     ).toString('base64');
@@ -44,10 +61,11 @@ export async function POST(req: NextRequest) {
       success: true,
       user: {
         email: inputEmail,
-        name: 'upgradeUX Admin',
-        role: 'superadmin',
+        name: founderInfo.name,
+        memberId: founderInfo.memberId,
+        role: 'Founder',
       },
-      message: 'Authentication successful.',
+      message: `Welcome back, ${founderInfo.name}!`,
     });
 
     // 30 Days Persistent HttpOnly Cookie

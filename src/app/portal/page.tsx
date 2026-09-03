@@ -102,7 +102,7 @@ function ClientPortalContent() {
   const completedCount = project.milestones.filter((m) => m.completed).length;
 
   return (
-    <div className="min-h-screen w-screen bg-[#f8f9fb] text-[#1e293b] p-3.5 sm:p-6 overflow-y-auto select-none">
+    <div className="min-h-screen w-screen bg-[#f8f9fb] text-[#1e293b] p-3.5 sm:p-6 overflow-y-auto">
       {/* Container */}
       <div className="max-w-[720px] w-full mx-auto space-y-3.5">
         {/* Top Navbar */}

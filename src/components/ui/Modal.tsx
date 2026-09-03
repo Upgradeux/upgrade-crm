@@ -11,6 +11,7 @@ interface ModalProps {
   subtitle?: string;
   children: React.ReactNode;
   maxWidth?: string;
+  overflowVisible?: boolean;
 }
 
 export function Modal({
@@ -20,6 +21,7 @@ export function Modal({
   subtitle,
   children,
   maxWidth = 'max-w-[540px]',
+  overflowVisible = false,
 }: ModalProps) {
   useEffect(() => {
     if (isOpen) {
@@ -35,7 +37,7 @@ export function Modal({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4">
       {/* Backdrop */}
       <div
         className="fixed inset-0 bg-black/60 backdrop-blur-[2px] transition-opacity duration-150"
@@ -45,7 +47,8 @@ export function Modal({
       {/* Modal Dialog Card */}
       <div
         className={cn(
-          'relative w-full bg-[var(--t-background-primary)] border border-[var(--t-border-color-medium)] rounded-[12px] shadow-2xl z-10 animate-fade-in overflow-hidden max-h-[90vh] flex flex-col',
+          'relative w-full max-w-[95vw] bg-[var(--t-background-primary)] border border-[var(--t-border-color-medium)] rounded-[12px] shadow-2xl z-10 animate-fade-in max-h-[92dvh] flex flex-col',
+          overflowVisible ? 'overflow-visible' : 'overflow-hidden',
           maxWidth
         )}
       >
@@ -70,7 +73,9 @@ export function Modal({
         </div>
 
         {/* Body */}
-        <div className="p-4 overflow-y-auto max-h-[calc(90vh-110px)]">{children}</div>
+        <div className={cn('p-4 max-h-[calc(90vh-110px)]', overflowVisible ? 'overflow-visible' : 'overflow-y-auto')}>
+          {children}
+        </div>
       </div>
     </div>
   );

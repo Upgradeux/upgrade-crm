@@ -31,7 +31,7 @@ import { Button } from '../ui/Button';
 import { Badge } from '../ui/Badge';
 import { Input } from '../ui/Input';
 import { Dropdown } from '../ui/Dropdown';
-import { LeadStatus, ServiceType, Note, LeadSource, CallOutcome } from '@/types/crm';
+import { LeadStatus, ServiceType, Note, LeadSource, CallOutcome, TaskPriority } from '@/types/crm';
 import { formatCurrency, formatDate, formatRelativeTime, getGoogleMapsUrl, getTwitterUrl } from '@/lib/utils';
 
 export function LeadDetailDrawer() {
@@ -51,58 +51,106 @@ export function LeadDetailDrawer() {
     setInstagramDMLeadModal,
     setEmailComposerLeadModal,
     setMeetingModalLead,
+    setFollowUpModalLead,
+    completeFollowUp,
+    deleteFollowUp,
+    addTask,
     teamMembers,
     spaces,
     currency,
     timezone,
+    agencyEmail,
     addToast,
   } = useCRM();
 
   const [noteInput, setNoteInput] = useState('');
   const [noteType, setNoteType] = useState<Note['type']>('call');
   const [callOutcome, setCallOutcome] = useState<CallOutcome>('Spoke with Decision Maker');
+  const [createTaskFromNote, setCreateTaskFromNote] = useState<boolean>(false);
+  const [emailMeTask, setEmailMeTask] = useState<boolean>(false);
+  const [taskDueDate, setTaskDueDate] = useState<string>(() => {
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    return tomorrow.toISOString().split('T')[0];
+  });
+  const [taskDueTime, setTaskDueTime] = useState<string>('09:00');
+  const [taskPriority, setTaskPriority] = useState<TaskPriority>('high');
   const [activeTab, setActiveTab] = useState<'timeline' | 'details'>('timeline');
 
   if (!activeLead) return null;
 
-  const spaceOptions = spaces
-    .filter((s) => s.id !== 'all')
-    .map((s) => ({
-      value: s.id,
-      label: s.name,
-    }));
+  const spaceOptions = [
+    { value: 'all', label: 'All Spaces (General / Global)' },
+    ...spaces
+      .filter((s) => s.id !== 'all')
+      .map((s) => ({
+        value: s.id,
+        label: s.name,
+      })),
+  ];
 
   const statusOptions = [
-    { value: 'Not Contacted', label: 'Not Contacted', badge: <span className="w-1.5 h-1.5 rounded-full bg-slate-400 shrink-0" /> },
+    { value: 'Leads', label: 'Leads', badge: <span className="w-1.5 h-1.5 rounded-full bg-indigo-400 shrink-0" /> },
+    { value: 'Not Contacted', label: 'Not Contacted', badge: <span className="w-1.5 h-1.5 rounded-full bg-amber-400 shrink-0" /> },
     { value: 'Contacted', label: 'Contacted', badge: <span className="w-1.5 h-1.5 rounded-full bg-sky-400 shrink-0" /> },
-    { value: 'Booked Call', label: 'Booked Meeting', badge: <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 shrink-0" /> },
-    { value: 'In Processing / Proposal', label: 'Proposal Sent', badge: <span className="w-1.5 h-1.5 rounded-full bg-purple-400 shrink-0" /> },
-    { value: 'Won', label: 'Won (Closed)', badge: <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0" /> },
+    { value: 'Booked Meeting', label: 'Booked Meeting', badge: <span className="w-1.5 h-1.5 rounded-full bg-blue-400 shrink-0" /> },
+    { value: 'Proposal Sent', label: 'Proposal Sent', badge: <span className="w-1.5 h-1.5 rounded-full bg-purple-400 shrink-0" /> },
     { value: 'Lost', label: 'Lost', badge: <span className="w-1.5 h-1.5 rounded-full bg-rose-500 shrink-0" /> },
+    { value: 'Won', label: 'Won (Closed)', badge: <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0" /> },
   ];
 
-  const teamMemberOptions = teamMembers.map((m) => ({
-    value: m.name,
-    label: `${m.name} (${m.role.split(' ')[0]})`,
-    badge: (
-      <span
-        className="w-3.5 h-3.5 rounded-full flex items-center justify-center text-[8.5px] font-bold text-white uppercase shrink-0"
-        style={{ backgroundColor: m.avatarColor || '#6366f1' }}
-      >
-        {m.name.charAt(0)}
-      </span>
-    ),
-  }));
+  const teamMemberOptions = teamMembers.length > 0
+    ? teamMembers.map((m) => ({
+        value: m.name,
+        label: `${m.name} (${m.role})`,
+        badge: (
+          <span
+            className="w-3.5 h-3.5 rounded-full flex items-center justify-center text-[8.5px] font-bold text-white uppercase shrink-0"
+            style={{ backgroundColor: m.avatarColor || '#6366f1' }}
+          >
+            {m.name.charAt(0)}
+          </span>
+        ),
+      }))
+    : [{ value: 'Unassigned', label: 'Unassigned' }];
 
-  const serviceOptions = [
-    { value: 'AI Voice Agent', label: 'AI Voice Agent' },
-    { value: 'Web Development', label: 'Web Development' },
-    { value: 'Workflow / n8n Automation', label: 'Workflow / n8n Automation' },
-    { value: 'AI Chatbot', label: 'AI Chatbot' },
-    { value: 'Monthly Retainer', label: 'Monthly Retainer' },
+  const ALL_SERVICES: ServiceType[] = [
+    'Web Development',
+    'Google Business Profile',
+    'AI Voice Agent',
+    'AI Automation',
+    'Meta Ads',
+    'AI Chatbot',
+    'Workflow / n8n Automation',
+    'Monthly Retainer',
+    'Lead Generation',
   ];
+
+  const serviceOptions = ALL_SERVICES.map((s) => ({ value: s, label: s }));
 
   if (!activeLead) return null;
+
+  const handlePresetTaskDate = (daysFromNow: number, hour = 9) => {
+    const d = new Date();
+    d.setDate(d.getDate() + daysFromNow);
+    const yyyy = d.getFullYear();
+    const mm = String(d.getMonth() + 1).padStart(2, '0');
+    const dd = String(d.getDate()).padStart(2, '0');
+    setTaskDueDate(`${yyyy}-${mm}-${dd}`);
+    setTaskDueTime(`${String(hour).padStart(2, '0')}:00`);
+  };
+
+  const handleTaskNextMonday = () => {
+    const d = new Date();
+    const day = d.getDay();
+    const diff = d.getDate() + (day === 0 ? 1 : 8 - day);
+    d.setDate(diff);
+    const yyyy = d.getFullYear();
+    const mm = String(d.getMonth() + 1).padStart(2, '0');
+    const dd = String(d.getDate()).padStart(2, '0');
+    setTaskDueDate(`${yyyy}-${mm}-${dd}`);
+    setTaskDueTime('09:00');
+  };
 
   const handleAddNote = (e: React.FormEvent) => {
     e.preventDefault();
@@ -114,8 +162,46 @@ export function LeadDetailDrawer() {
     }
 
     addNote(activeLead.id, content, noteType);
+
+    if (createTaskFromNote) {
+      const fullIso = taskDueDate
+        ? new Date(`${taskDueDate}T${taskDueTime || '09:00'}:00`).toISOString()
+        : undefined;
+
+      addTask({
+        title: `${noteType === 'call' ? 'Call follow-up' : noteType === 'meeting' ? 'Meeting action item' : 'Task'}: ${activeLead.companyName}`,
+        description: content,
+        priority: taskPriority,
+        status: 'todo',
+        category: noteType === 'call' ? 'Outreach & Calls' : noteType === 'meeting' ? 'Client Work' : 'Internal / Admin',
+        dueDate: fullIso,
+        dueTime: taskDueTime || '09:00',
+        assignedTo: activeLead.leadOwner || 'Alex (Founder)',
+        leadId: activeLead.id,
+        leadName: activeLead.companyName,
+      });
+
+      if (emailMeTask && agencyEmail) {
+        fetch('/api/send-email', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            to: agencyEmail,
+            subject: `[Internal Task / Reminder] ${activeLead.companyName}`,
+            text: `Hi Alex,\n\nYou logged a note and created an internal task for ${activeLead.companyName}:\n\n• Note Type: ${(noteType || 'note').toUpperCase()}\n• Priority: ${taskPriority.toUpperCase()}\n• Due Date: ${taskDueDate} at ${taskDueTime}\n• Client: ${activeLead.companyName} (Phone: ${activeLead.phone || 'N/A'}, Email: ${activeLead.email || 'N/A'})\n• Content:\n${content}\n\nView details inside your agency CRM.`,
+          }),
+        }).catch(() => {});
+        addToast(`Note saved, task scheduled for ${taskDueDate} & email sent to ${agencyEmail}!`, 'success');
+      } else {
+        addToast(`Note saved and task scheduled for ${taskDueDate}!`, 'success');
+      }
+    } else {
+      addToast('Note logged to lead timeline', 'success');
+    }
+
     setNoteInput('');
-    addToast('Note logged to lead timeline', 'success');
+    setCreateTaskFromNote(false);
+    setEmailMeTask(false);
   };
 
   const handleConvertProject = () => {
@@ -129,7 +215,7 @@ export function LeadDetailDrawer() {
     updateLead(activeLead.id, {
       lastContactedAt: new Date().toISOString(),
       callOutcome: outcome,
-      status: activeLead.status === 'Not Contacted' ? 'Contacted' : activeLead.status,
+      status: (activeLead.status === 'Not Contacted' || activeLead.status === 'Leads') ? 'Contacted' : activeLead.status,
       outreachStage: 'Contacted',
     });
     addToast(`Call logged: ${outcome}`, 'success');
@@ -143,8 +229,8 @@ export function LeadDetailDrawer() {
         onClick={closeLeadDrawer}
       />
 
-      {/* Drawer Container (460px Twenty High-Density Inspector) */}
-      <div className="relative z-10 w-full max-w-[480px] h-full bg-[var(--t-background-primary)] border-l border-[var(--t-border-color-medium)] shadow-2xl flex flex-col font-sans select-none animate-slide-left">
+      {/* Drawer Container (460px Twenty High-Density Inspector on Desktop, Full Width on Mobile) */}
+      <div className="relative z-10 w-full max-w-full sm:max-w-[480px] h-full bg-[var(--t-background-primary)] border-l border-[var(--t-border-color-medium)] shadow-2xl flex flex-col font-sans animate-slide-left pb-16 sm:pb-0">
         {/* Header Strip */}
         <div className="px-4 pt-3.5 pb-2.5 border-b border-[var(--t-border-color-light)] space-y-2 shrink-0">
           <div className="flex items-center justify-between">
@@ -337,10 +423,83 @@ export function LeadDetailDrawer() {
           </div>
         )}
 
+        {/* Active Scheduled Follow-Up Banner */}
+        {activeLead.activeFollowUp && !activeLead.activeFollowUp.completed && (
+          <div className="px-3.5 py-2.5 bg-amber-500/10 border-b border-amber-500/25 flex items-center justify-between gap-2 shrink-0">
+            <div className="flex items-center gap-2 min-w-0">
+              <div className="w-[26px] h-[26px] rounded-[5px] bg-amber-500/20 text-amber-400 flex items-center justify-center shrink-0 border border-amber-500/30">
+                {activeLead.activeFollowUp.channel === 'whatsapp' && <IconBrandWhatsapp size={14} />}
+                {activeLead.activeFollowUp.channel === 'email' && <IconMail size={14} />}
+                {activeLead.activeFollowUp.channel === 'instagram' && <IconBrandInstagram size={14} />}
+                {activeLead.activeFollowUp.channel === 'reminder' && <IconClock size={14} />}
+              </div>
+              <div className="min-w-0">
+                <div className="flex items-center gap-1.5 leading-tight">
+                  <span className="text-[11.5px] font-bold text-[var(--t-font-color-primary)]">
+                    Follow-Up ({activeLead.activeFollowUp.channel.toUpperCase()})
+                  </span>
+                  <span className="text-[10px] text-amber-400 font-medium">
+                    {formatDate(activeLead.activeFollowUp.scheduledDate, timezone)}
+                  </span>
+                </div>
+                <div className="text-[10px] text-[var(--t-font-color-secondary)] truncate">
+                  {activeLead.activeFollowUp.note || 'Scheduled follow-up touchpoint'}
+                </div>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-1 shrink-0">
+              {/* Execute Action only for external communication channels */}
+              {activeLead.activeFollowUp.channel !== 'reminder' && (
+                <button
+                  onClick={() => {
+                    if (activeLead.activeFollowUp?.channel === 'whatsapp') setWhatsAppLeadModal(activeLead);
+                    else if (activeLead.activeFollowUp?.channel === 'email') setEmailComposerLeadModal(activeLead);
+                    else if (activeLead.activeFollowUp?.channel === 'instagram') setInstagramDMLeadModal(activeLead);
+                  }}
+                  className="h-[24px] px-2 rounded-[4px] bg-amber-500 hover:bg-amber-400 text-slate-950 font-semibold text-[10.5px] flex items-center gap-1 transition-all cursor-pointer shadow-2xs"
+                >
+                  {activeLead.activeFollowUp.channel === 'whatsapp' && <span>Open WhatsApp</span>}
+                  {activeLead.activeFollowUp.channel === 'email' && <span>Compose Email</span>}
+                  {activeLead.activeFollowUp.channel === 'instagram' && <span>Send DM</span>}
+                </button>
+              )}
+
+              {/* Complete Follow-Up */}
+              <button
+                onClick={() => completeFollowUp(activeLead.id)}
+                className="h-[24px] px-1.5 rounded-[4px] bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/30 text-emerald-400 text-[10.5px] font-medium flex items-center gap-0.5 transition-colors cursor-pointer"
+                title="Mark Follow-up as Completed"
+              >
+                <IconCheck size={11} />
+                <span>Done</span>
+              </button>
+
+              {/* Reschedule Follow-Up */}
+              <button
+                onClick={() => setFollowUpModalLead(activeLead)}
+                className="h-[24px] px-1.5 rounded-[4px] bg-[var(--t-background-primary)] hover:bg-[var(--t-background-secondary)] border border-[var(--t-border-color-medium)] text-[var(--t-font-color-secondary)] text-[10px] transition-colors cursor-pointer"
+                title="Reschedule"
+              >
+                <IconClock size={11} />
+              </button>
+
+              {/* Cancel Follow-Up */}
+              <button
+                onClick={() => deleteFollowUp(activeLead.id)}
+                className="h-[24px] px-1.5 rounded-[4px] bg-[var(--t-background-primary)] hover:bg-rose-500/15 border border-[var(--t-border-color-medium)] hover:border-rose-500/30 text-[var(--t-font-color-tertiary)] hover:text-rose-400 text-[10px] transition-colors cursor-pointer"
+                title="Cancel Follow-Up"
+              >
+                <IconX size={11} />
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* High-Density Action & Outreach Toolbar */}
         <div className="px-3.5 py-2 bg-[var(--t-background-transparent-lighter)] border-b border-[var(--t-border-color-light)] space-y-2 shrink-0">
-          {/* Main Direct Actions (Google Meet, Email, WhatsApp, Instagram DM) */}
-          <div className="grid grid-cols-4 gap-1.5">
+          {/* Main Direct Actions (Google Meet, Email, WhatsApp, Instagram DM, Follow-Up) */}
+          <div className="grid grid-cols-5 gap-1.5">
             <button
               onClick={() => setMeetingModalLead(activeLead)}
               className="h-[26px] px-1.5 rounded-[5px] bg-[var(--t-background-secondary)] hover:bg-[var(--t-background-primary)] text-[var(--t-font-color-primary)] border border-[var(--t-border-color-medium)] hover:border-[var(--t-border-color-focus)] text-[10.5px] font-medium flex items-center justify-center gap-1 transition-all cursor-pointer shadow-2xs"
@@ -371,6 +530,14 @@ export function LeadDetailDrawer() {
             >
               <IconBrandInstagram size={12} className="text-pink-500 shrink-0" />
               <span className="truncate">Insta DM</span>
+            </button>
+
+            <button
+              onClick={() => setFollowUpModalLead(activeLead)}
+              className="h-[26px] px-1.5 rounded-[5px] bg-[var(--t-background-secondary)] hover:bg-[var(--t-background-primary)] text-[var(--t-font-color-primary)] border border-amber-500/40 hover:border-amber-500/80 text-[10.5px] font-medium flex items-center justify-center gap-1 transition-all cursor-pointer shadow-2xs"
+            >
+              <IconClock size={12} className="text-amber-400 shrink-0" />
+              <span className="truncate">Follow-Up</span>
             </button>
           </div>
 
@@ -515,10 +682,108 @@ export function LeadDetailDrawer() {
                 className="w-full bg-[var(--t-background-primary)] border border-[var(--t-border-color-light)] hover:border-[var(--t-border-color-medium)] focus:border-[var(--t-border-color-focus)] rounded-[4px] p-2 text-[11.5px] text-[var(--t-font-color-primary)] outline-none resize-none leading-relaxed"
               />
 
-              <div className="flex justify-end">
-                <Button type="submit" variant="primary" size="sm" className="h-[24px] text-[11px]">
-                  Save Note
-                </Button>
+              <div className="space-y-2 pt-1">
+                <div className="flex items-center justify-between gap-2">
+                  <label className="flex items-center gap-1.5 text-[10.5px] text-[var(--t-font-color-secondary)] cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={createTaskFromNote}
+                      onChange={(e) => {
+                        setCreateTaskFromNote(e.target.checked);
+                        if (!e.target.checked) setEmailMeTask(false);
+                      }}
+                      className="rounded border-[var(--t-border-color-medium)] accent-[#5d4ef7] w-3.5 h-3.5"
+                    />
+                    <span className="font-medium">Also add to Workspace Tasks</span>
+                  </label>
+
+                  <Button type="submit" variant="primary" size="sm" className="h-[24px] text-[11px]">
+                    Save Note
+                  </Button>
+                </div>
+
+                {/* When creating task from note, allow picking date, time, priority & email alert */}
+                {createTaskFromNote && (
+                  <div className="p-2.5 rounded-[5px] bg-[var(--t-background-primary)] border border-[var(--t-border-color-light)] space-y-2 animate-fade-in text-[11px]">
+                    {/* Quick Timing Presets */}
+                    <div>
+                      <span className="text-[10px] text-[var(--t-font-color-tertiary)] block mb-1">
+                        Task Deadline Presets:
+                      </span>
+                      <div className="flex items-center gap-1">
+                        {[
+                          { label: 'Tomorrow 9 AM', onClick: () => handlePresetTaskDate(1, 9) },
+                          { label: 'In 2 Days', onClick: () => handlePresetTaskDate(2, 9) },
+                          { label: 'Next Monday', onClick: handleTaskNextMonday },
+                        ].map((p, idx) => (
+                          <button
+                            key={idx}
+                            type="button"
+                            onClick={p.onClick}
+                            className="h-[20px] px-1.5 rounded-[3px] bg-[var(--t-background-secondary)] hover:bg-[var(--t-background-tertiary)] text-[10px] text-[var(--t-font-color-secondary)] border border-[var(--t-border-color-light)] transition-colors cursor-pointer truncate"
+                          >
+                            {p.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Date, Time & Priority Pickers */}
+                    <div className="grid grid-cols-3 gap-1.5">
+                      <div>
+                        <label className="text-[9.5px] text-[var(--t-font-color-tertiary)] block mb-0.5">
+                          Due Date
+                        </label>
+                        <Input
+                          type="date"
+                          value={taskDueDate}
+                          onChange={(e) => setTaskDueDate(e.target.value)}
+                          className="h-[24px] text-[10.5px] font-mono px-1.5"
+                          required
+                        />
+                      </div>
+
+                      <div>
+                        <label className="text-[9.5px] text-[var(--t-font-color-tertiary)] block mb-0.5">
+                          Due Time
+                        </label>
+                        <Input
+                          type="time"
+                          value={taskDueTime}
+                          onChange={(e) => setTaskDueTime(e.target.value)}
+                          className="h-[24px] text-[10.5px] font-mono px-1.5"
+                          required
+                        />
+                      </div>
+
+                      <div>
+                        <label className="text-[9.5px] text-[var(--t-font-color-tertiary)] block mb-0.5">
+                          Priority
+                        </label>
+                        <select
+                          value={taskPriority}
+                          onChange={(e) => setTaskPriority(e.target.value as TaskPriority)}
+                          className="w-full h-[24px] px-1 bg-[var(--t-background-secondary)] border border-[var(--t-border-color-light)] rounded-[4px] text-[10.5px] text-[var(--t-font-color-primary)] outline-none cursor-pointer"
+                        >
+                          <option value="high">🔥 High</option>
+                          <option value="medium">Medium</option>
+                          <option value="low">Low</option>
+                        </select>
+                      </div>
+                    </div>
+
+                    {/* Email alert option */}
+                    <label className="flex items-center gap-1.5 text-[10px] text-[var(--t-font-color-secondary)] cursor-pointer pt-0.5">
+                      <input
+                        type="checkbox"
+                        checked={emailMeTask}
+                        onChange={(e) => setEmailMeTask(e.target.checked)}
+                        className="rounded accent-[#5d4ef7] w-3 h-3"
+                      />
+                      <span>Send notification email to my inbox ({agencyEmail || 'upgradeux.agency@gmail.com'})</span>
+                    </label>
+                  </div>
+                )}
               </div>
             </form>
 
@@ -594,7 +859,7 @@ export function LeadDetailDrawer() {
               <div className="grid grid-cols-12 items-center px-3 py-1 hover:bg-[var(--t-background-primary)] transition-colors">
                 <div className="col-span-4 flex items-center gap-1.5 text-[11px] text-[var(--t-font-color-tertiary)]">
                   <IconPhone size={12} className="shrink-0" />
-                  <span>Phone</span>
+                  <span>Phone (Primary)</span>
                 </div>
                 <div className="col-span-8">
                   <input
@@ -602,6 +867,23 @@ export function LeadDetailDrawer() {
                     value={activeLead.phone || ''}
                     onChange={(e) => updateLead(activeLead.id, { phone: e.target.value })}
                     placeholder="+91 / +1 Phone"
+                    className="w-full h-[24px] px-1.5 text-[11.5px] font-mono bg-transparent hover:bg-[var(--t-background-secondary)] focus:bg-[var(--t-background-primary)] border border-transparent hover:border-[var(--t-border-color-light)] focus:border-[var(--t-border-color-focus)] rounded-[3px] outline-none text-[var(--t-font-color-primary)]"
+                  />
+                </div>
+              </div>
+
+              {/* Property: Alternate Phone */}
+              <div className="grid grid-cols-12 items-center px-3 py-1 hover:bg-[var(--t-background-primary)] transition-colors">
+                <div className="col-span-4 flex items-center gap-1.5 text-[11px] text-[var(--t-font-color-tertiary)]">
+                  <IconPhoneCall size={12} className="shrink-0 text-amber-500" />
+                  <span>Alt Phone</span>
+                </div>
+                <div className="col-span-8">
+                  <input
+                    type="text"
+                    value={activeLead.alternatePhone || ''}
+                    onChange={(e) => updateLead(activeLead.id, { alternatePhone: e.target.value })}
+                    placeholder="Secondary phone / landline"
                     className="w-full h-[24px] px-1.5 text-[11.5px] font-mono bg-transparent hover:bg-[var(--t-background-secondary)] focus:bg-[var(--t-background-primary)] border border-transparent hover:border-[var(--t-border-color-light)] focus:border-[var(--t-border-color-focus)] rounded-[3px] outline-none text-[var(--t-font-color-primary)]"
                   />
                 </div>
@@ -705,20 +987,45 @@ export function LeadDetailDrawer() {
                 </div>
               </div>
 
-              {/* Property: Service Interest */}
-              <div className="grid grid-cols-12 items-center px-3 py-1 hover:bg-[var(--t-background-primary)] transition-colors">
-                <div className="col-span-4 flex items-center gap-1.5 text-[11px] text-[var(--t-font-color-tertiary)]">
-                  <IconBuilding size={12} className="shrink-0" />
-                  <span>Service</span>
+              {/* Property: Services to Pitch (Multi-Select) */}
+              <div className="px-3 py-2 space-y-1.5 hover:bg-[var(--t-background-primary)] transition-colors">
+                <div className="flex items-center justify-between text-[11px] text-[var(--t-font-color-tertiary)]">
+                  <div className="flex items-center gap-1.5">
+                    <IconBuilding size={12} className="shrink-0" />
+                    <span>Services to Pitch</span>
+                  </div>
+                  <span className="text-[10px] text-[#5d4ef7] font-mono font-medium">
+                    {(activeLead.services || [activeLead.serviceInterest]).length} Selected
+                  </span>
                 </div>
-                <div className="col-span-8">
-                  <Dropdown
-                    value={activeLead.serviceInterest}
-                    onChange={(val) => updateLead(activeLead.id, { serviceInterest: val as ServiceType })}
-                    options={serviceOptions}
-                    size="sm"
-                    buttonClassName="h-[24px] px-1 text-[11px] bg-transparent border-transparent hover:border-[var(--t-border-color-light)] focus:border-[var(--t-border-color-focus)]"
-                  />
+                <div className="flex flex-wrap gap-1 pt-0.5">
+                  {ALL_SERVICES.map((svc) => {
+                    const currentList = activeLead.services || [activeLead.serviceInterest];
+                    const isSelected = currentList.includes(svc);
+                    return (
+                      <button
+                        key={svc}
+                        type="button"
+                        onClick={() => {
+                          const updated = isSelected
+                            ? currentList.filter((s) => s !== svc)
+                            : [...currentList, svc];
+                          updateLead(activeLead.id, {
+                            services: updated,
+                            serviceInterest: updated[0] || 'Web Development',
+                          });
+                        }}
+                        className={`px-1.5 py-0.5 rounded-[4px] text-[10px] font-medium border transition-all flex items-center gap-1 cursor-pointer select-none ${
+                          isSelected
+                            ? 'bg-[#5d4ef7]/15 border-[#5d4ef7] text-[#5d4ef7] font-semibold'
+                            : 'bg-[var(--t-background-secondary)] border-[var(--t-border-color-light)] text-[var(--t-font-color-secondary)] hover:text-[var(--t-font-color-primary)]'
+                        }`}
+                      >
+                        {isSelected && <IconCheck size={10} className="text-[#5d4ef7] shrink-0" />}
+                        <span>{svc}</span>
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
 
@@ -730,12 +1037,12 @@ export function LeadDetailDrawer() {
                 </div>
                 <div className="col-span-8">
                   <Dropdown
-                    value={activeLead.industrySpaceId || 'real-estate'}
+                    value={activeLead.industrySpaceId || 'all'}
                     onChange={(val) => {
                       const matched = spaces.find((s) => s.id === val);
                       updateLead(activeLead.id, {
                         industrySpaceId: val,
-                        industry: matched?.name || 'Real Estate & Properties',
+                        industry: val === 'all' ? 'All Spaces' : matched?.name || 'All Spaces',
                       });
                     }}
                     options={spaceOptions}

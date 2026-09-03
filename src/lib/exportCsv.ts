@@ -94,7 +94,7 @@ export function parseCsvToLeads(csvText: string): Partial<Lead>[] {
     const location = leadMap['location'] || leadMap['city'] || 'Remote';
     const dealValue = parseFloat(leadMap['deal value'] || leadMap['budget'] || leadMap['deal value ($)'] || '5000') || 5000;
     const service = (leadMap['service interest'] || leadMap['service'] || 'AI Voice Agent') as ServiceType;
-    const status = (leadMap['status'] || 'Not Contacted') as LeadStatus;
+    const status = (leadMap['status'] || 'Leads') as LeadStatus;
     const outreachStage = (leadMap['outreach stage'] || 'Needs Outreach') as OutreachStage;
 
     leads.push({
@@ -107,7 +107,7 @@ export function parseCsvToLeads(csvText: string): Partial<Lead>[] {
       location,
       dealValue,
       serviceInterest: service,
-      status: ['Not Contacted', 'Contacted', 'Booked Call', 'In Processing / Proposal', 'Won', 'Lost'].includes(status) ? status : 'Not Contacted',
+      status: ['Leads', 'Not Contacted', 'Contacted', 'Booked Meeting', 'Booked Call', 'Proposal Sent', 'In Processing / Proposal', 'Won', 'Lost'].includes(status) ? status : 'Leads',
       outreachStage: ['Needs Outreach', 'Contacted', 'Follow-Up Needed', 'Closed'].includes(outreachStage) ? outreachStage : 'Needs Outreach',
       leadOwner: leadMap['lead owner'] || leadMap['owner'] || 'Alex Rivera',
       socials: {

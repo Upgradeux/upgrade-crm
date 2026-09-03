@@ -20,8 +20,10 @@ import {
   IconBuilding,
   IconTrophy,
   IconPlus,
+  IconBrandWhatsapp,
 } from '@tabler/icons-react';
 import { formatCurrency, formatDate, getInitials } from '@/lib/utils';
+import { getStatusIcon } from '../ui/LiveTeamPresenceWidget';
 
 export function TeamView() {
   const {
@@ -38,10 +40,9 @@ export function TeamView() {
   } = useCRM();
 
   const roleOptions = [
-    { value: 'Admin (Full Access)', label: 'Admin (Full Access)' },
-    { value: 'Closer / Sales Lead', label: 'Closer / Sales Lead' },
-    { value: 'Cold Caller / Outreach Specialist', label: 'Cold Caller / Outreach' },
-    { value: 'Project Manager', label: 'Project Manager' },
+    { value: 'Founder', label: 'Founder' },
+    { value: 'Co-Founder', label: 'Co-Founder' },
+    { value: 'Cold Caller', label: 'Cold Caller' },
     { value: 'Developer', label: 'Developer' },
   ];
 
@@ -52,7 +53,7 @@ export function TeamView() {
   // Invite Form State
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
-  const [role, setRole] = useState<UserRole>('Cold Caller / Outreach Specialist');
+  const [role, setRole] = useState<UserRole>('Cold Caller');
   const [phone, setPhone] = useState('');
   const [calComLink, setCalComLink] = useState('');
 
@@ -99,27 +100,27 @@ export function TeamView() {
   };
 
   return (
-    <div className="flex-1 h-[calc(100vh-48px)] p-3 overflow-hidden bg-[var(--t-background-primary)] flex flex-col gap-2 select-none">
+    <div className="flex-1 h-[calc(100vh-48px)] p-3 overflow-hidden bg-[var(--t-background-primary)] flex flex-col gap-2">
       {/* Twenty Style Compact Horizontal Toolbar */}
-      <div className="h-[38px] px-2.5 rounded-[6px] bg-[var(--t-background-secondary)] border border-[var(--t-border-color-light)] flex items-center justify-between gap-2.5 shrink-0">
-        <div className="flex items-center gap-2 flex-1 min-w-0">
-          <div className="w-[180px] sm:w-[220px]">
+      <div className="p-2 sm:px-2.5 sm:py-1.5 rounded-[6px] bg-[var(--t-background-secondary)] border border-[var(--t-border-color-light)] flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 shrink-0">
+        <div className="flex flex-col sm:flex-row sm:items-center gap-2 flex-1 min-w-0">
+          <div className="w-full sm:w-[220px]">
             <Input
               placeholder="Search team members..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               leftIcon={<IconSearch size={13} />}
-              className="h-[26px] text-[12px] bg-[var(--t-background-primary)]"
+              className="h-[26px] text-[12px] bg-[var(--t-background-primary)] w-full"
             />
           </div>
 
           {/* Role Filter Pills */}
-          <div className="hidden md:flex items-center gap-1">
+          <div className="flex items-center gap-1 overflow-x-auto pb-0.5 sm:pb-0">
             {['All', 'Admin', 'Closer', 'Caller', 'Developer'].map((r) => (
               <button
                 key={r}
                 onClick={() => setRoleFilter(r)}
-                className={`h-[24px] px-2 rounded-[4px] text-[11px] font-medium transition-colors cursor-pointer ${
+                className={`h-[24px] px-2 rounded-[4px] text-[11px] font-medium transition-colors cursor-pointer whitespace-nowrap ${
                   roleFilter === r
                     ? 'bg-[var(--t-btn-primary-bg)] text-[var(--t-btn-primary-text)] font-semibold shadow-2xs'
                     : 'text-[var(--t-font-color-secondary)] hover:text-[var(--t-font-color-primary)] hover:bg-[var(--t-background-transparent-light)]'
@@ -132,9 +133,9 @@ export function TeamView() {
         </div>
 
         {/* Stats & Invite Button */}
-        <div className="flex items-center gap-3 shrink-0">
-          <span className="text-[11px] font-mono text-[var(--t-font-color-tertiary)] hidden sm:inline">
-            {teamMembers.length} active reps • {leads.length} assigned leads
+        <div className="flex items-center justify-between sm:justify-end gap-3 shrink-0">
+          <span className="text-[11px] font-mono text-[var(--t-font-color-tertiary)]">
+            {teamMembers.length} reps • {leads.length} leads
           </span>
 
           <Button
@@ -142,6 +143,7 @@ export function TeamView() {
             size="sm"
             leftIcon={<IconUserPlus size={13} />}
             onClick={() => setIsInviteModalOpen(true)}
+            className="h-[26px] text-[11px]"
           >
             Invite Member
           </Button>
@@ -153,8 +155,9 @@ export function TeamView() {
         <table className="w-full text-left text-[12px] border-collapse min-w-[860px]">
           <thead className="bg-[var(--t-background-secondary)] sticky top-0 z-10 border-b border-[var(--t-border-color-light)] text-[var(--t-font-color-tertiary)] text-[10.5px] font-medium uppercase tracking-wider">
             <tr>
-              <th className="py-2 px-3 font-medium min-w-[220px]">Team Member</th>
-              <th className="py-2 px-3 font-medium min-w-[160px]">Role & Permissions</th>
+              <th className="py-2 px-3 font-medium min-w-[200px]">Team Member</th>
+              <th className="py-2 px-3 font-medium min-w-[140px]">Role & Permissions</th>
+              <th className="py-2 px-3 font-medium min-w-[170px]">Live Activity Status</th>
               <th className="py-2 px-3 font-medium w-[110px] whitespace-nowrap">Assigned Leads</th>
               <th className="py-2 px-3 font-medium w-[130px] whitespace-nowrap">Deals Closed</th>
               <th className="py-2 px-3 font-medium min-w-[130px] whitespace-nowrap">Direct Line</th>
@@ -177,10 +180,20 @@ export function TeamView() {
                   {/* Member Name & Email */}
                   <td className="py-1.5 px-3 font-normal text-[var(--t-font-color-primary)]">
                     <div className="flex items-center gap-2.5">
-                      <div
-                        className={`w-[24px] h-[24px] rounded-full bg-gradient-to-tr ${member.avatarColor} text-white flex items-center justify-center font-medium text-[10px] shrink-0`}
-                      >
-                        {getInitials(member.name)}
+                      <div className="w-[28px] h-[28px] rounded-full overflow-hidden border border-[var(--t-border-color-light)] shrink-0 bg-[var(--t-background-secondary)]">
+                        {member.avatarUrl ? (
+                          <img
+                            src={member.avatarUrl}
+                            alt={member.name}
+                            className="w-full h-full object-cover"
+                          />
+                        ) : (
+                          <div
+                            className={`w-full h-full bg-gradient-to-tr ${member.avatarColor} text-white flex items-center justify-center font-medium text-[10px]`}
+                          >
+                            {getInitials(member.name)}
+                          </div>
+                        )}
                       </div>
                       <div className="min-w-0">
                         <div className="font-medium text-[var(--t-font-color-primary)] truncate max-w-[180px]">
@@ -195,7 +208,7 @@ export function TeamView() {
 
                   {/* Role Selector Badge */}
                   <td className="py-1.5 px-3">
-                    <div className="max-w-[190px]">
+                    <div className="max-w-[150px]">
                       <Dropdown
                         value={member.role}
                         onChange={(val) => updateTeamMember(member.id, { role: val as UserRole })}
@@ -203,6 +216,23 @@ export function TeamView() {
                         size="sm"
                         buttonClassName="h-[24px] text-[11px] font-medium bg-transparent border-[var(--t-border-color-light)] hover:border-[var(--t-border-color-strong)]"
                       />
+                    </div>
+                  </td>
+
+                  {/* Live Activity Status */}
+                  <td className="py-1.5 px-3">
+                    <div className="flex items-center gap-1.5 text-[11px]">
+                      <div className="shrink-0">{getStatusIcon(member.activityStatus, member.activityIcon)}</div>
+                      <div className="min-w-0">
+                        <div className="text-[var(--t-font-color-primary)] font-medium truncate max-w-[160px]">
+                          {member.activityStatus || 'Available / Online'}
+                        </div>
+                        {member.statusNote && (
+                          <div className="text-[9.5px] text-[var(--t-font-color-tertiary)] truncate max-w-[160px]">
+                            {member.statusNote}
+                          </div>
+                        )}
+                      </div>
                     </div>
                   </td>
 
@@ -228,9 +258,24 @@ export function TeamView() {
                     )}
                   </td>
 
-                  {/* Phone */}
+                  {/* Phone & Direct WhatsApp */}
                   <td className="py-1.5 px-3 text-[11px] text-[var(--t-font-color-tertiary)] font-mono whitespace-nowrap">
-                    {member.phone || '—'}
+                    {member.phone ? (
+                      <div className="flex items-center gap-1.5">
+                        <span>{member.phone}</span>
+                        <a
+                          href={`https://wa.me/${member.phone.replace(/[^0-9]/g, '')}`}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="p-0.5 text-emerald-400 hover:text-emerald-300"
+                          title="WhatsApp Founder"
+                        >
+                          <IconBrandWhatsapp size={13} />
+                        </a>
+                      </div>
+                    ) : (
+                      '—'
+                    )}
                   </td>
 
                   {/* Joined Date */}

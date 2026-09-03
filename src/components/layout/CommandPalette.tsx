@@ -16,8 +16,12 @@ import {
   IconSettings,
   IconArrowRight,
   IconX,
+  IconPhone,
+  IconBrandInstagram,
+  IconMail,
+  IconMapPin,
 } from '@tabler/icons-react';
-import { formatCurrency } from '@/lib/utils';
+import { formatCurrency, matchLeadSearch, matchProjectSearch } from '@/lib/utils';
 import { exportLeadsToCsv } from '@/lib/exportCsv';
 
 export function CommandPalette() {
@@ -25,7 +29,9 @@ export function CommandPalette() {
     isCommandPaletteOpen,
     setIsCommandPaletteOpen,
     leads,
+    allLeads,
     projects,
+    allProjects,
     openLeadDrawer,
     setCurrentView,
     setIsNewLeadModalOpen,
@@ -48,27 +54,17 @@ export function CommandPalette() {
 
   const q = query.toLowerCase().trim();
 
-  // Filter Leads
+  // Search across all leads with universal search matcher
+  const searchPoolLeads = allLeads?.length > 0 ? allLeads : leads;
   const matchedLeads = q
-    ? leads.filter(
-        (l) =>
-          l.companyName.toLowerCase().includes(q) ||
-          l.contactName?.toLowerCase().includes(q) ||
-          l.email.toLowerCase().includes(q) ||
-          l.location.toLowerCase().includes(q) ||
-          l.serviceInterest.toLowerCase().includes(q)
-      )
-    : leads.slice(0, 4);
+    ? searchPoolLeads.filter((l) => matchLeadSearch(l, q))
+    : searchPoolLeads.slice(0, 5);
 
-  // Filter Projects
+  // Search across all projects with universal search matcher
+  const searchPoolProjects = allProjects?.length > 0 ? allProjects : projects;
   const matchedProjects = q
-    ? projects.filter(
-        (p) =>
-          p.projectName.toLowerCase().includes(q) ||
-          p.companyName.toLowerCase().includes(q) ||
-          p.serviceType.toLowerCase().includes(q)
-      )
-    : projects.slice(0, 3);
+    ? searchPoolProjects.filter((p) => matchProjectSearch(p, q))
+    : searchPoolProjects.slice(0, 4);
 
   const handleSelectLead = (id: string) => {
     setIsCommandPaletteOpen(false);
@@ -198,8 +194,32 @@ export function CommandPalette() {
                             {lead.status}
                           </span>
                         </div>
-                        <span className="text-[11px] text-[var(--t-font-color-tertiary)] truncate">
-                          {lead.serviceInterest} • {lead.location}
+                        <span className="text-[11px] text-[var(--t-font-color-tertiary)] truncate flex items-center gap-2 flex-wrap">
+                          <span>{lead.serviceInterest || 'Web Development'}</span>
+                          {lead.phone && (
+                            <span className="font-mono text-[10.5px] text-[var(--t-font-color-secondary)] inline-flex items-center gap-1">
+                              <IconPhone size={11} className="text-[var(--t-font-color-tertiary)] shrink-0" />
+                              {lead.phone}
+                            </span>
+                          )}
+                          {lead.socials?.instagram && (
+                            <span className="text-[10.5px] text-pink-400 inline-flex items-center gap-1">
+                              <IconBrandInstagram size={11} className="shrink-0" />
+                              {lead.socials.instagram}
+                            </span>
+                          )}
+                          {lead.email && !lead.phone && (
+                            <span className="text-[10.5px] text-indigo-400 inline-flex items-center gap-1">
+                              <IconMail size={11} className="shrink-0" />
+                              {lead.email}
+                            </span>
+                          )}
+                          {lead.location && (
+                            <span className="text-[10.5px] text-emerald-400 inline-flex items-center gap-1">
+                              <IconMapPin size={11} className="shrink-0" />
+                              {lead.location}
+                            </span>
+                          )}
                         </span>
                       </div>
                     </div>

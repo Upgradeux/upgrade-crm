@@ -53,7 +53,7 @@ export function ClientPortalPreview() {
   const completedMilestones = selectedProject.milestones.filter((m) => m.completed).length;
 
   return (
-    <div className="flex-1 h-[calc(100vh-48px)] p-3 sm:p-5 overflow-y-auto bg-[var(--t-background-primary)] flex flex-col gap-3 select-none">
+    <div className="flex-1 h-[calc(100vh-48px)] p-3 sm:p-5 overflow-y-auto bg-[var(--t-background-primary)] flex flex-col gap-3">
       {/* Top Administrative Toolbar */}
       <div className="h-[40px] px-3 rounded-[6px] bg-[var(--t-background-secondary)] border border-[var(--t-border-color-light)] flex items-center justify-between gap-3 shrink-0 max-w-[760px] w-full mx-auto">
         <div className="flex items-center gap-2">

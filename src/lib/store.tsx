@@ -15,8 +15,13 @@ import {
   IntegrationsConfig,
   IndustrySpace,
   InboundSubmission,
+  FollowUpChannel,
+  FollowUpItem,
+  CRMTask,
+  CRMNote,
+  TeamPresenceRecord,
 } from '@/types/crm';
-import { INITIAL_LEADS, INITIAL_PROJECTS } from './initialData';
+import { INITIAL_LEADS, INITIAL_PROJECTS, INITIAL_TASKS, INITIAL_NOTES } from './initialData';
 import { generateUUID, formatCurrency, formatDate, generateSecurePortalKey } from './utils';
 
 export const DEFAULT_SPACES: IndustrySpace[] = [
@@ -40,6 +45,8 @@ import {
   deleteProjectFromSupabase,
   clearAllInboundSubmissionsFromSupabase,
   clearAllSupabaseTables,
+  syncTeamPresenceToSupabase,
+  fetchTeamPresenceFromSupabase,
 } from './supabase';
 
 interface Toast {
@@ -48,7 +55,36 @@ interface Toast {
   type: 'success' | 'info' | 'warning' | 'error';
 }
 
-const DEFAULT_TEAM_MEMBERS: TeamMember[] = [];
+const DEFAULT_TEAM_MEMBERS: TeamMember[] = [
+  {
+    id: 'member-swapnil',
+    name: 'Swapnil',
+    email: 'skalambe520@gmail.com',
+    phone: '+91 8788581826',
+    role: 'Founder',
+    avatarUrl: '/status/swapnil.jpeg',
+    avatarColor: '#6366f1',
+    joinedAt: new Date().toISOString(),
+    activityStatus: 'In Dev Mode',
+    activityIcon: 'code',
+    statusNote: 'Working on Agency CRM & client projects',
+    lastActiveAt: new Date().toISOString(),
+  },
+  {
+    id: 'member-suraj',
+    name: 'Suraj',
+    email: 'iamsurajsavle@gmail.com',
+    phone: '+91 8369213418',
+    role: 'Founder',
+    avatarUrl: '/status/suraj.png',
+    avatarColor: '#10b981',
+    joinedAt: new Date().toISOString(),
+    activityStatus: 'Calling Clients',
+    activityIcon: 'phone',
+    statusNote: 'Cold outreach & client meetings',
+    lastActiveAt: new Date().toISOString(),
+  },
+];
 
 const DEFAULT_INTEGRATIONS: IntegrationsConfig = {
   calComUsername: 'upgradeux',
@@ -76,10 +112,11 @@ interface CRMContextType {
   setIsCreateSpaceModalOpen: (open: boolean) => void;
   editingSpace: IndustrySpace | null;
   setEditingSpace: (space: IndustrySpace | null) => void;
-  teamMembers: TeamMember[];
   integrationsConfig: IntegrationsConfig;
   currentView: CRMView;
   setCurrentView: (view: CRMView) => void;
+  isMobileMenuOpen: boolean;
+  setIsMobileMenuOpen: (open: boolean) => void;
   projectsLayout: 'table' | 'cards';
   setProjectsLayout: (layout: 'table' | 'cards') => void;
   activeLeadId: string | null;
@@ -109,7 +146,12 @@ interface CRMContextType {
   moveLeadStatus: (id: string, status: LeadStatus) => void;
   markLeadContacted: (id: string) => void;
   bookCall: (id: string, dateStr?: string) => void;
+  scheduleFollowUp: (leadId: string, channel: FollowUpChannel, scheduledDate: string, note?: string) => void;
+  completeFollowUp: (leadId: string, followUpId?: string) => void;
+  deleteFollowUp: (leadId: string, followUpId?: string) => void;
   addNote: (leadId: string, content: string, type?: Note['type']) => void;
+  updateNote: (leadId: string, noteId: string, content: string) => void;
+  togglePinLeadNote: (leadId: string, noteId: string) => void;
   deleteNote: (leadId: string, noteId: string) => void;
   bulkImportLeads: (newLeads: Partial<Lead>[]) => void;
 
@@ -122,9 +164,30 @@ interface CRMContextType {
   deleteMilestone: (projectId: string, milestoneId: string) => void;
 
   // Team Operations
+  teamMembers: TeamMember[];
+  activeMemberId: string;
+  setActiveMemberId: (id: string) => void;
+  teamPresence: Record<string, TeamPresenceRecord>;
+  setMyActivityStatus: (status: string, emoji?: string, customText?: string) => void;
   addTeamMember: (member: Omit<TeamMember, 'id' | 'joinedAt'>) => void;
   updateTeamMember: (id: string, updates: Partial<TeamMember>) => void;
   deleteTeamMember: (id: string) => void;
+
+  // Tasks & Workspace Operations
+  tasks: CRMTask[];
+  addTask: (task: Omit<CRMTask, 'id' | 'createdAt' | 'updatedAt' | 'completed'>) => void;
+  updateTask: (id: string, updates: Partial<CRMTask>) => void;
+  toggleTask: (id: string) => void;
+  deleteTask: (id: string) => void;
+
+  // Notes & Scratchpad Operations
+  crmNotes: CRMNote[];
+  addCRMNote: (note: Omit<CRMNote, 'id' | 'createdAt' | 'updatedAt'>) => void;
+  updateCRMNote: (id: string, updates: Partial<CRMNote>) => void;
+  togglePinCRMNote: (id: string) => void;
+  deleteCRMNote: (id: string) => void;
+  scratchpadText: string;
+  setScratchpadText: (text: string) => void;
 
   // Inbound Submissions
   inboundSubmissions: InboundSubmission[];
@@ -162,6 +225,8 @@ interface CRMContextType {
   setEmailComposerLeadModal: (lead: Lead | null) => void;
   meetingModalLead: Lead | null;
   setMeetingModalLead: (lead: Lead | null) => void;
+  followUpModalLead: Lead | null;
+  setFollowUpModalLead: (lead: Lead | null) => void;
 
   // Supabase
   supabaseConfig: SupabaseConfig;
@@ -234,10 +299,20 @@ const STORAGE_KEY_AGENCY_EMAIL = 'upgradeux_crm_agency_email_v3';
 const STORAGE_KEY_SPACES = 'upgradeux_crm_spaces_v3';
 const STORAGE_KEY_ACTIVE_SPACE = 'upgradeux_crm_active_space_v3';
 const STORAGE_KEY_INBOUND = 'upgradeux_crm_inbound_v3';
+const STORAGE_KEY_TASKS = 'upgradeux_crm_tasks_v3';
+const STORAGE_KEY_NOTES = 'upgradeux_crm_notes_v3';
+const STORAGE_KEY_SCRATCHPAD = 'upgradeux_crm_scratchpad_v3';
+const STORAGE_KEY_ACTIVE_MEMBER = 'upgradeux_crm_active_member_v3';
+const STORAGE_KEY_PRESENCE = 'upgradeux_crm_presence_v3';
 
 export function CRMProvider({ children }: { children: React.ReactNode }) {
   const [rawLeads, setRawLeads] = useState<Lead[]>(INITIAL_LEADS);
   const [rawProjects, setRawProjects] = useState<Project[]>(INITIAL_PROJECTS);
+  const [tasks, setTasks] = useState<CRMTask[]>(INITIAL_TASKS);
+  const [crmNotes, setCrmNotes] = useState<CRMNote[]>(INITIAL_NOTES);
+  const [scratchpadText, setScratchpadTextState] = useState<string>(
+    '# Quick Workspace Scratchpad\n- Call back salon lead regarding audio demo\n- Check Google Maps business profile ranking\n- Follow up on proposed Web Dev revisions'
+  );
   const [spaces, setSpaces] = useState<IndustrySpace[]>(DEFAULT_SPACES);
   const [activeSpaceId, setActiveSpaceIdState] = useState<string>('all');
   const [isCreateSpaceModalOpen, setIsCreateSpaceModalOpen] = useState(false);
@@ -245,8 +320,36 @@ export function CRMProvider({ children }: { children: React.ReactNode }) {
   const [inboundSubmissions, setInboundSubmissions] = useState<InboundSubmission[]>([]);
 
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>(DEFAULT_TEAM_MEMBERS);
+  const [activeMemberId, setActiveMemberIdState] = useState<string>('member-swapnil');
+  const [teamPresence, setTeamPresence] = useState<Record<string, TeamPresenceRecord>>({
+    'member-swapnil': {
+      memberId: 'member-swapnil',
+      memberName: 'Swapnil',
+      memberEmail: 'skalambe520@gmail.com',
+      role: 'Founder',
+      avatarUrl: '/status/swapnil.jpeg',
+      avatarColor: '#6366f1',
+      lastActiveAt: new Date().toISOString(),
+      activityStatus: 'In Dev Mode',
+      activityIcon: 'code',
+      statusNote: 'Working on Agency CRM & client projects',
+    },
+    'member-suraj': {
+      memberId: 'member-suraj',
+      memberName: 'Suraj',
+      memberEmail: 'iamsurajsavle@gmail.com',
+      role: 'Founder',
+      avatarUrl: '/status/suraj.png',
+      avatarColor: '#10b981',
+      lastActiveAt: new Date().toISOString(),
+      activityStatus: 'Calling Clients',
+      activityIcon: 'phone',
+      statusNote: 'Cold outreach & client meetings',
+    },
+  });
   const [integrationsConfig, setIntegrationsConfig] = useState<IntegrationsConfig>(DEFAULT_INTEGRATIONS);
   const [currentView, setCurrentView] = useState<CRMView>('pipeline');
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState<boolean>(false);
   const [projectsLayout, setProjectsLayout] = useState<'table' | 'cards'>('table');
   const [activeLeadId, setActiveLeadId] = useState<string | null>(null);
   const [theme, setTheme] = useState<'dark' | 'light'>('dark');
@@ -412,6 +515,7 @@ export function CRMProvider({ children }: { children: React.ReactNode }) {
   const [instagramDMLeadModal, setInstagramDMLeadModal] = useState<Lead | null>(null);
   const [emailComposerLeadModal, setEmailComposerLeadModal] = useState<Lead | null>(null);
   const [meetingModalLead, setMeetingModalLead] = useState<Lead | null>(null);
+  const [followUpModalLead, setFollowUpModalLead] = useState<Lead | null>(null);
 
   // Supabase (Read directly from environment variables)
   const [supabaseConfig, setSupabaseConfigState] = useState<SupabaseConfig>(() => {
@@ -483,6 +587,11 @@ export function CRMProvider({ children }: { children: React.ReactNode }) {
         if (data.authenticated && data.user) {
           setIsAuthenticated(true);
           setCurrentUser(data.user);
+          const memberId = data.user.email?.toLowerCase().includes('suraj') ? 'member-suraj' : 'member-swapnil';
+          setActiveMemberIdState(memberId);
+          try {
+            localStorage.setItem(STORAGE_KEY_ACTIVE_MEMBER, memberId);
+          } catch {}
         } else {
           setIsAuthenticated(false);
           setCurrentUser(null);
@@ -500,6 +609,11 @@ export function CRMProvider({ children }: { children: React.ReactNode }) {
   const login = (user: { email: string; name: string }) => {
     setIsAuthenticated(true);
     setCurrentUser(user);
+    const memberId = user.email?.toLowerCase().includes('suraj') ? 'member-suraj' : 'member-swapnil';
+    setActiveMemberIdState(memberId);
+    try {
+      localStorage.setItem(STORAGE_KEY_ACTIVE_MEMBER, memberId);
+    } catch {}
   };
 
   const logout = async () => {
@@ -537,10 +651,28 @@ export function CRMProvider({ children }: { children: React.ReactNode }) {
 
       const savedTeam = localStorage.getItem(STORAGE_KEY_TEAM);
       if (savedTeam) {
-        const parsed = JSON.parse(savedTeam);
-        const cleanTeam = parsed.filter((m: any) => !['team-1', 'team-2', 'team-3', 'team-4'].includes(m.id));
-        setTeamMembers(cleanTeam);
-        localStorage.setItem(STORAGE_KEY_TEAM, JSON.stringify(cleanTeam));
+        try {
+          const parsed = JSON.parse(savedTeam);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            setTeamMembers(parsed);
+          } else {
+            setTeamMembers(DEFAULT_TEAM_MEMBERS);
+          }
+        } catch {
+          setTeamMembers(DEFAULT_TEAM_MEMBERS);
+        }
+      } else {
+        setTeamMembers(DEFAULT_TEAM_MEMBERS);
+      }
+
+      const savedActiveMember = localStorage.getItem(STORAGE_KEY_ACTIVE_MEMBER);
+      if (savedActiveMember) setActiveMemberIdState(savedActiveMember);
+
+      const savedPresence = localStorage.getItem(STORAGE_KEY_PRESENCE);
+      if (savedPresence) {
+        try {
+          setTeamPresence(JSON.parse(savedPresence));
+        } catch {}
       }
 
       const savedIntegrations = localStorage.getItem(STORAGE_KEY_INTEGRATIONS);
@@ -569,6 +701,15 @@ export function CRMProvider({ children }: { children: React.ReactNode }) {
 
       const savedInbound = localStorage.getItem(STORAGE_KEY_INBOUND);
       if (savedInbound) setInboundSubmissions(JSON.parse(savedInbound));
+
+      const savedTasks = localStorage.getItem(STORAGE_KEY_TASKS);
+      if (savedTasks) setTasks(JSON.parse(savedTasks));
+
+      const savedNotes = localStorage.getItem(STORAGE_KEY_NOTES);
+      if (savedNotes) setCrmNotes(JSON.parse(savedNotes));
+
+      const savedScratchpad = localStorage.getItem(STORAGE_KEY_SCRATCHPAD);
+      if (savedScratchpad) setScratchpadTextState(savedScratchpad);
     } catch (e) {
       console.warn('Could not read from localStorage:', e);
     }
@@ -584,53 +725,165 @@ export function CRMProvider({ children }: { children: React.ReactNode }) {
   // Background Auto-Sync on Mount & Periodic Polling with Supabase Cloud DB
   useEffect(() => {
     const autoSyncFromCloud = async () => {
-      const envUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || supabaseConfig.url;
-      const envKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || supabaseConfig.anonKey;
-      if (envUrl && envKey) {
-        try {
-          const config = { url: envUrl, anonKey: envKey, isConnected: true };
-          const [remoteLeads, remoteInbound, remoteProjects] = await Promise.all([
-            fetchLeadsFromSupabase(config),
-            fetchInboundSubmissionsFromSupabase(config),
-            fetchProjectsFromSupabase(config),
-          ]);
+      const envUrl = (process.env.NEXT_PUBLIC_SUPABASE_URL || supabaseConfig.url || '').trim();
+      const envKey = (process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || supabaseConfig.anonKey || '').trim();
+      
+      // Only attempt sync if a valid URL & key are present and connected
+      if (!envUrl || !envKey || !envUrl.startsWith('http') || (!supabaseConfig.isConnected && !process.env.NEXT_PUBLIC_SUPABASE_URL)) {
+        return;
+      }
 
-          if (remoteLeads && remoteLeads.length > 0) {
-            setRawLeads(remoteLeads);
-          }
+      try {
+        const config = { url: envUrl, anonKey: envKey, isConnected: true };
+        const [remoteLeads, remoteInbound, remoteProjects, remoteTeamData] = await Promise.all([
+          fetchLeadsFromSupabase(config).catch(() => null),
+          fetchInboundSubmissionsFromSupabase(config).catch(() => null),
+          fetchProjectsFromSupabase(config).catch(() => null),
+          fetchTeamPresenceFromSupabase(config).catch(() => null),
+        ]);
 
-          if (remoteProjects && remoteProjects.length > 0) {
-            setRawProjects(remoteProjects);
-          }
-
-          if (remoteInbound) {
-            setInboundSubmissions((prev) => {
-              const existingIds = new Set(remoteInbound.map((s) => s.id));
-              const localOnly = prev.filter((s) => !existingIds.has(s.id));
-              return [...remoteInbound, ...localOnly];
+        if (remoteTeamData) {
+          if (remoteTeamData.teamMembers && remoteTeamData.teamMembers.length > 0) {
+            setTeamMembers((prev) => {
+              const localMap = new Map(prev.map((m) => [m.id, m]));
+              const remoteIds = new Set(remoteTeamData.teamMembers?.map((m) => m.id));
+              const merged = (remoteTeamData.teamMembers || []).map((rm) => {
+                const local = localMap.get(rm.id);
+                return local ? { ...rm, ...local } : rm;
+              });
+              const localOnly = prev.filter((m) => !remoteIds.has(m.id));
+              return [...merged, ...localOnly];
             });
           }
-        } catch (e) {
-          console.warn('Background auto-sync:', e);
+          if (remoteTeamData.presence && Array.isArray(remoteTeamData.presence)) {
+            setTeamPresence((prev) => {
+              const next = { ...prev };
+              remoteTeamData.presence?.forEach((p) => {
+                next[p.memberId] = p;
+              });
+              return next;
+            });
+          }
         }
+
+        if (remoteLeads && remoteLeads.length > 0) {
+          setRawLeads((prevLeads) => {
+            const localMap = new Map(prevLeads.map((l) => [l.id, l]));
+            const remoteIds = new Set(remoteLeads.map((l) => l.id));
+
+            const merged = remoteLeads.map((remoteLead) => {
+              const local = localMap.get(remoteLead.id);
+              if (!local) return remoteLead;
+
+              // Preserve local active follow-up, leadOwner, and notes if local has active data
+              return {
+                ...remoteLead,
+                leadOwner: local.leadOwner || remoteLead.leadOwner || 'Unassigned',
+                activeFollowUp: local.activeFollowUp || remoteLead.activeFollowUp,
+                followUps: (local.followUps && local.followUps.length > (remoteLead.followUps?.length || 0))
+                  ? local.followUps
+                  : (remoteLead.followUps || local.followUps || []),
+                nextFollowUpDate: local.nextFollowUpDate || remoteLead.nextFollowUpDate,
+                bookedMeetingDate: local.bookedMeetingDate || remoteLead.bookedMeetingDate,
+                googleMeetLink: local.googleMeetLink || remoteLead.googleMeetLink,
+                industrySpaceId: local.industrySpaceId || remoteLead.industrySpaceId,
+                notes: (local.notes && local.notes.length > (remoteLead.notes?.length || 0))
+                  ? local.notes
+                  : (remoteLead.notes || local.notes || []),
+              };
+            });
+
+            const localOnly = prevLeads.filter((l) => !remoteIds.has(l.id));
+            return [...merged, ...localOnly];
+          });
+        }
+
+        if (remoteProjects && remoteProjects.length > 0) {
+          setRawProjects((prevProjects) => {
+            const localMap = new Map(prevProjects.map((p) => [p.id, p]));
+            const remoteIds = new Set(remoteProjects.map((p) => p.id));
+            const merged = remoteProjects.map((p) => {
+              const local = localMap.get(p.id);
+              return local ? { ...p, milestones: local.milestones?.length ? local.milestones : p.milestones } : p;
+            });
+            const localOnly = prevProjects.filter((p) => !remoteIds.has(p.id));
+            return [...merged, ...localOnly];
+          });
+        }
+
+        if (remoteInbound && remoteInbound.length > 0) {
+          setInboundSubmissions((prev) => {
+            const existingIds = new Set(remoteInbound.map((s) => s.id));
+            const localOnly = prev.filter((s) => !existingIds.has(s.id));
+            return [...remoteInbound, ...localOnly];
+          });
+        }
+      } catch {
+        // Silently fallback to local storage
       }
     };
 
     // Initial fetch on mount
     autoSyncFromCloud();
 
-    // Auto-refresh every 15 seconds to catch live inbound leads from the website
-    const interval = setInterval(autoSyncFromCloud, 15000);
+    // User presence heartbeat - update active user's lastActiveAt when interacting
+    let lastHeartbeat = 0;
+    const sendHeartbeat = () => {
+      const now = Date.now();
+      if (now - lastHeartbeat < 20000) return; // Throttle to every 20s
+      lastHeartbeat = now;
+      const currentMember = teamMembers.find((m) => m.id === activeMemberId);
+      if (currentMember) {
+        const nowIso = new Date().toISOString();
+        const updatedPres: TeamPresenceRecord = {
+          memberId: currentMember.id,
+          memberName: currentMember.name,
+          memberEmail: currentMember.email,
+          role: currentMember.role,
+          avatarUrl: currentMember.avatarUrl,
+          avatarColor: currentMember.avatarColor,
+          lastActiveAt: nowIso,
+          activityStatus: currentMember.activityStatus || 'Available / Online',
+          activityIcon: currentMember.activityIcon || 'check',
+          statusNote: currentMember.statusNote,
+        };
+        setTeamPresence((prev) => ({ ...prev, [currentMember.id]: updatedPres }));
+        if (supabaseConfig.isConnected) {
+          const presenceList = Object.values({ ...teamPresence, [currentMember.id]: updatedPres });
+          syncTeamPresenceToSupabase(teamMembers, presenceList, supabaseConfig);
+        }
+      }
+    };
 
-    // Refresh when user focuses the tab
-    const handleFocus = () => autoSyncFromCloud();
+    // Auto-refresh periodically (every 15s) to synchronize seamlessly across laptops, mobiles, and team members
+    const syncInterval = setInterval(autoSyncFromCloud, 15000);
+
+    // Refresh instantly when user focuses the tab or switches back to the app on mobile/desktop
+    const handleFocus = () => {
+      sendHeartbeat();
+      autoSyncFromCloud();
+    };
+
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') {
+        sendHeartbeat();
+        autoSyncFromCloud();
+      }
+    };
+
     window.addEventListener('focus', handleFocus);
+    window.addEventListener('pointerdown', sendHeartbeat);
+    window.addEventListener('keydown', sendHeartbeat);
+    document.addEventListener('visibilitychange', handleVisibility);
 
     return () => {
-      clearInterval(interval);
+      clearInterval(syncInterval);
       window.removeEventListener('focus', handleFocus);
+      window.removeEventListener('pointerdown', sendHeartbeat);
+      window.removeEventListener('keydown', sendHeartbeat);
+      document.removeEventListener('visibilitychange', handleVisibility);
     };
-  }, [supabaseConfig.url, supabaseConfig.anonKey]);
+  }, [supabaseConfig.isConnected, supabaseConfig.url, supabaseConfig.anonKey, activeMemberId, teamMembers, teamPresence]);
 
   // Save Leads
   useEffect(() => {
@@ -802,6 +1055,7 @@ export function CRMProvider({ children }: { children: React.ReactNode }) {
     const newLead: Lead = {
       ...leadData,
       id,
+      status: leadData.status || 'Leads',
       industrySpaceId: assignedSpaceId,
       industry: leadData.industry || matchedSpace?.name || 'Real Estate & Properties',
       notes: newNotes,
@@ -857,8 +1111,8 @@ export function CRMProvider({ children }: { children: React.ReactNode }) {
     if (!targetLead) return;
 
     let outreachStage: OutreachStage = targetLead.outreachStage;
-    if (status === 'Not Contacted') outreachStage = 'Needs Outreach';
-    else if (status === 'Contacted' || status === 'Booked Call' || status === 'In Processing / Proposal') {
+    if (status === 'Leads' || status === 'Not Contacted') outreachStage = 'Needs Outreach';
+    else if (status === 'Contacted' || status === 'Booked Meeting' || status === 'Booked Call' || status === 'Proposal Sent' || status === 'In Processing / Proposal') {
       outreachStage = 'Contacted';
     } else if (status === 'Won' || status === 'Lost') {
       outreachStage = 'Closed';
@@ -902,7 +1156,7 @@ export function CRMProvider({ children }: { children: React.ReactNode }) {
     };
 
     updateLead(id, {
-      status: lead.status === 'Not Contacted' ? 'Contacted' : lead.status,
+      status: (lead.status === 'Not Contacted' || lead.status === 'Leads') ? 'Contacted' : lead.status,
       outreachStage: 'Contacted',
       lastContactedAt: now,
       notes: [note, ...(lead.notes || [])],
@@ -926,15 +1180,117 @@ export function CRMProvider({ children }: { children: React.ReactNode }) {
       type: 'meeting',
     };
 
+    const bookingDate = dateStr || new Date(Date.now() + 2 * 86400000).toISOString();
+
     updateLead(id, {
-      status: 'Booked Call',
+      status: 'Booked Meeting',
       outreachStage: 'Contacted',
-      lastContactedAt: now,
+      bookedMeetingDate: bookingDate,
       googleMeetLink: `https://${randomMeetCode}`,
       notes: [note, ...(lead.notes || [])],
     });
 
-    addToast(`Booked call for ${lead.companyName}`, 'success');
+    addToast(`Booked Demo Call with ${lead.companyName}!`, 'success');
+  };
+
+  const scheduleFollowUp = (
+    leadId: string,
+    channel: FollowUpChannel,
+    scheduledDate: string,
+    noteText?: string
+  ) => {
+    const lead = rawLeads.find((l) => l.id === leadId);
+    if (!lead) return;
+
+    const newFollowUp: FollowUpItem = {
+      id: generateUUID(),
+      channel,
+      scheduledDate,
+      note: noteText?.trim() || undefined,
+      completed: false,
+      createdAt: new Date().toISOString(),
+    };
+
+    const channelLabels: Record<FollowUpChannel, string> = {
+      whatsapp: 'WhatsApp',
+      email: 'Email',
+      instagram: 'Instagram DM',
+      reminder: 'Internal Reminder',
+    };
+
+    const noteAddition: Note = {
+      id: generateUUID(),
+      content: `Follow-up scheduled for ${formatDate(scheduledDate)} via ${channelLabels[channel]}${noteText ? `: "${noteText}"` : ''}`,
+      createdAt: new Date().toISOString(),
+      author: lead.leadOwner || 'Agent',
+      type: 'task',
+    };
+
+    const updatedFollowUps = [newFollowUp, ...(lead.followUps || [])];
+
+    updateLead(leadId, {
+      activeFollowUp: newFollowUp,
+      followUps: updatedFollowUps,
+      nextFollowUpDate: scheduledDate,
+      notes: [noteAddition, ...(lead.notes || [])],
+    });
+
+    addToast(`Follow-up scheduled via ${channelLabels[channel]}!`, 'success');
+  };
+
+  const completeFollowUp = (leadId: string, followUpId?: string) => {
+    const lead = rawLeads.find((l) => l.id === leadId);
+    if (!lead) return;
+
+    const now = new Date().toISOString();
+    const updatedFollowUps = (lead.followUps || []).map((f) => {
+      if (!followUpId || f.id === followUpId || f.id === lead.activeFollowUp?.id) {
+        return { ...f, completed: true, completedAt: now };
+      }
+      return f;
+    });
+
+    const activeChannel = lead.activeFollowUp?.channel || 'reminder';
+    const channelNames: Record<string, string> = {
+      whatsapp: 'WhatsApp',
+      email: 'Email',
+      instagram: 'Instagram DM',
+      reminder: 'Task Reminder',
+    };
+
+    const noteAddition: Note = {
+      id: generateUUID(),
+      content: `Follow-up completed on ${channelNames[activeChannel]}.`,
+      createdAt: now,
+      author: lead.leadOwner || 'Agent',
+      type: 'task',
+    };
+
+    updateLead(leadId, {
+      activeFollowUp: undefined,
+      followUps: updatedFollowUps,
+      nextFollowUpDate: undefined,
+      lastContactedAt: now,
+      notes: [noteAddition, ...(lead.notes || [])],
+    });
+
+    addToast('Follow-up marked as completed!', 'success');
+  };
+
+  const deleteFollowUp = (leadId: string, followUpId?: string) => {
+    const lead = rawLeads.find((l) => l.id === leadId);
+    if (!lead) return;
+
+    const updatedFollowUps = (lead.followUps || []).filter((f) => f.id !== followUpId);
+    const isClearingActive = !followUpId || lead.activeFollowUp?.id === followUpId;
+
+    updateLead(leadId, {
+      activeFollowUp: isClearingActive ? undefined : lead.activeFollowUp,
+      followUps: updatedFollowUps,
+      nextFollowUpDate: isClearingActive ? undefined : lead.nextFollowUpDate,
+    });
+
+    addToast('Follow-up cancelled', 'info');
   };
 
   const addNote = (leadId: string, content: string, type: Note['type'] = 'note') => {
@@ -963,6 +1319,28 @@ export function CRMProvider({ children }: { children: React.ReactNode }) {
     updateLead(leadId, {
       notes: (lead.notes || []).filter((n) => n.id !== noteId),
     });
+    addToast('Note deleted', 'info');
+  };
+
+  const updateNote = (leadId: string, noteId: string, content: string) => {
+    const lead = rawLeads.find((l) => l.id === leadId);
+    if (!lead) return;
+
+    updateLead(leadId, {
+      notes: (lead.notes || []).map((n) => (n.id === noteId ? { ...n, content: content.trim() } : n)),
+    });
+    addToast('Note updated', 'success');
+  };
+
+  const togglePinLeadNote = (leadId: string, noteId: string) => {
+    const lead = rawLeads.find((l) => l.id === leadId);
+    if (!lead) return;
+
+    const isCurrentlyPinned = (lead.notes || []).find((n) => n.id === noteId)?.isPinned;
+    updateLead(leadId, {
+      notes: (lead.notes || []).map((n) => (n.id === noteId ? { ...n, isPinned: !n.isPinned } : n)),
+    });
+    addToast(isCurrentlyPinned ? 'Note unpinned' : 'Note pinned to top', 'info');
   };
 
   const bulkImportLeads = (newLeads: Partial<Lead>[]) => {
@@ -979,7 +1357,7 @@ export function CRMProvider({ children }: { children: React.ReactNode }) {
       source: item.source || 'Google Maps',
       callOutcome: item.callOutcome || 'Not Called',
       socials: item.socials || {},
-      status: item.status || 'Not Contacted',
+      status: item.status || 'Leads',
       outreachStage: item.outreachStage || 'Needs Outreach',
       dealValue: item.dealValue || 5000,
       serviceInterest: item.serviceInterest || 'AI Voice Agent',
@@ -1109,26 +1487,216 @@ export function CRMProvider({ children }: { children: React.ReactNode }) {
     });
   };
 
-  // Team CRUD
+  // Team & Presence CRUD
+  const setActiveMemberId = (id: string) => {
+    setActiveMemberIdState(id);
+    try {
+      localStorage.setItem(STORAGE_KEY_ACTIVE_MEMBER, id);
+    } catch {}
+    const member = teamMembers.find((m) => m.id === id);
+    if (member) {
+      addToast(`Switched active profile to ${member.name}`, 'info');
+    }
+  };
+
+  const setMyActivityStatus = (status: string, icon: string = 'check', note?: string) => {
+    const currentMember = teamMembers.find((m) => m.id === activeMemberId) || teamMembers[0];
+    if (!currentMember) return;
+
+    const now = new Date().toISOString();
+    const newRecord: TeamPresenceRecord = {
+      memberId: currentMember.id,
+      memberName: currentMember.name,
+      memberEmail: currentMember.email,
+      role: currentMember.role,
+      avatarUrl: currentMember.avatarUrl,
+      avatarColor: currentMember.avatarColor,
+      lastActiveAt: now,
+      activityStatus: status,
+      activityIcon: icon,
+      statusNote: note,
+    };
+
+    setTeamPresence((prev) => {
+      const updated = { ...prev, [currentMember.id]: newRecord };
+      try {
+        localStorage.setItem(STORAGE_KEY_PRESENCE, JSON.stringify(updated));
+      } catch {}
+      return updated;
+    });
+
+    const updatedMembers = teamMembers.map((m) =>
+      m.id === currentMember.id
+        ? { ...m, activityStatus: status, activityIcon: icon, statusNote: note, lastActiveAt: now }
+        : m
+    );
+    setTeamMembers(updatedMembers);
+
+    if (supabaseConfig.isConnected) {
+      const presenceList = Object.values({ ...teamPresence, [currentMember.id]: newRecord });
+      syncTeamPresenceToSupabase(updatedMembers, presenceList, supabaseConfig);
+    }
+
+    addToast(`Status: ${status}`, 'success');
+  };
+
   const addTeamMember = (memberData: Omit<TeamMember, 'id' | 'joinedAt'>) => {
     const newMember: TeamMember = {
       ...memberData,
       id: generateUUID(),
       joinedAt: new Date().toISOString(),
+      lastActiveAt: new Date().toISOString(),
+      activityStatus: 'Available / Online',
+      activityIcon: 'check',
     };
-    setTeamMembers((prev) => [...prev, newMember]);
+    const updated = [...teamMembers, newMember];
+    setTeamMembers(updated);
+    if (supabaseConfig.isConnected) {
+      syncTeamPresenceToSupabase(updated, Object.values(teamPresence), supabaseConfig);
+    }
     addToast(`Added team member: ${newMember.name}`, 'success');
   };
 
   const updateTeamMember = (id: string, updates: Partial<TeamMember>) => {
-    setTeamMembers((prev) =>
-      prev.map((m) => (m.id === id ? { ...m, ...updates } : m))
-    );
+    const updated = teamMembers.map((m) => (m.id === id ? { ...m, ...updates } : m));
+    setTeamMembers(updated);
+    if (supabaseConfig.isConnected) {
+      syncTeamPresenceToSupabase(updated, Object.values(teamPresence), supabaseConfig);
+    }
   };
 
   const deleteTeamMember = (id: string) => {
-    setTeamMembers((prev) => prev.filter((m) => m.id !== id));
+    const updated = teamMembers.filter((m) => m.id !== id);
+    setTeamMembers(updated);
+    if (supabaseConfig.isConnected) {
+      syncTeamPresenceToSupabase(updated, Object.values(teamPresence), supabaseConfig);
+    }
     addToast('Team member removed', 'info');
+  };
+
+  // Task Operations
+  const addTask = (taskData: Omit<CRMTask, 'id' | 'createdAt' | 'updatedAt' | 'completed'>) => {
+    const newTask: CRMTask = {
+      ...taskData,
+      id: `task-${generateUUID().substring(0, 8)}`,
+      completed: false,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    setTasks((prev) => {
+      const updated = [newTask, ...prev];
+      try {
+        localStorage.setItem(STORAGE_KEY_TASKS, JSON.stringify(updated));
+      } catch {}
+      return updated;
+    });
+    addToast(`Task created: "${taskData.title}"`, 'success');
+  };
+
+  const updateTask = (id: string, updates: Partial<CRMTask>) => {
+    setTasks((prev) => {
+      const updated = prev.map((t) => {
+        if (t.id !== id) return t;
+        return { ...t, ...updates, updatedAt: new Date().toISOString() };
+      });
+      try {
+        localStorage.setItem(STORAGE_KEY_TASKS, JSON.stringify(updated));
+      } catch {}
+      return updated;
+    });
+  };
+
+  const toggleTask = (id: string) => {
+    setTasks((prev) => {
+      const updated = prev.map((t) => {
+        if (t.id !== id) return t;
+        const nowCompleted = !t.completed;
+        return {
+          ...t,
+          completed: nowCompleted,
+          status: nowCompleted ? ('done' as const) : ('todo' as const),
+          completedAt: nowCompleted ? new Date().toISOString() : undefined,
+          updatedAt: new Date().toISOString(),
+        };
+      });
+      try {
+        localStorage.setItem(STORAGE_KEY_TASKS, JSON.stringify(updated));
+      } catch {}
+      return updated;
+    });
+  };
+
+  const deleteTask = (id: string) => {
+    setTasks((prev) => {
+      const updated = prev.filter((t) => t.id !== id);
+      try {
+        localStorage.setItem(STORAGE_KEY_TASKS, JSON.stringify(updated));
+      } catch {}
+      return updated;
+    });
+    addToast('Task deleted', 'info');
+  };
+
+  // Note Operations
+  const addCRMNote = (noteData: Omit<CRMNote, 'id' | 'createdAt' | 'updatedAt'>) => {
+    const newNote: CRMNote = {
+      ...noteData,
+      id: `note-${generateUUID().substring(0, 8)}`,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    setCrmNotes((prev) => {
+      const updated = [newNote, ...prev];
+      try {
+        localStorage.setItem(STORAGE_KEY_NOTES, JSON.stringify(updated));
+      } catch {}
+      return updated;
+    });
+    addToast(`Note saved: "${noteData.title}"`, 'success');
+  };
+
+  const updateCRMNote = (id: string, updates: Partial<CRMNote>) => {
+    setCrmNotes((prev) => {
+      const updated = prev.map((n) => {
+        if (n.id !== id) return n;
+        return { ...n, ...updates, updatedAt: new Date().toISOString() };
+      });
+      try {
+        localStorage.setItem(STORAGE_KEY_NOTES, JSON.stringify(updated));
+      } catch {}
+      return updated;
+    });
+  };
+
+  const togglePinCRMNote = (id: string) => {
+    setCrmNotes((prev) => {
+      const updated = prev.map((n) => {
+        if (n.id !== id) return n;
+        return { ...n, isPinned: !n.isPinned, updatedAt: new Date().toISOString() };
+      });
+      try {
+        localStorage.setItem(STORAGE_KEY_NOTES, JSON.stringify(updated));
+      } catch {}
+      return updated;
+    });
+  };
+
+  const deleteCRMNote = (id: string) => {
+    setCrmNotes((prev) => {
+      const updated = prev.filter((n) => n.id !== id);
+      try {
+        localStorage.setItem(STORAGE_KEY_NOTES, JSON.stringify(updated));
+      } catch {}
+      return updated;
+    });
+    addToast('Note deleted', 'info');
+  };
+
+  const setScratchpadText = (text: string) => {
+    setScratchpadTextState(text);
+    try {
+      localStorage.setItem(STORAGE_KEY_SCRATCHPAD, text);
+    } catch {}
   };
 
   // Inbound Submissions
@@ -1160,7 +1728,7 @@ export function CRMProvider({ children }: { children: React.ReactNode }) {
       source: 'Website Inbound',
       serviceInterest: (primaryInterest as ServiceType) || 'Web Development',
       dealValue: dealValue,
-      status: sub.source === 'Cal.com Booking' ? 'Booked Call' : 'Not Contacted',
+      status: sub.source === 'Cal.com Booking' ? 'Booked Meeting' : 'Leads',
       outreachStage: sub.source === 'Cal.com Booking' ? 'Contacted' : 'Needs Outreach',
       leadOwner: teamMembers[0]?.name ? `${teamMembers[0].name} (${teamMembers[0].role.split(' ')[0]})` : 'Unassigned',
       location: 'Website Inbound',
@@ -1277,6 +1845,8 @@ export function CRMProvider({ children }: { children: React.ReactNode }) {
         integrationsConfig,
         currentView,
         setCurrentView,
+        isMobileMenuOpen,
+        setIsMobileMenuOpen,
         projectsLayout,
         setProjectsLayout,
         activeLeadId,
@@ -1305,6 +1875,8 @@ export function CRMProvider({ children }: { children: React.ReactNode }) {
         markLeadContacted,
         bookCall,
         addNote,
+        updateNote,
+        togglePinLeadNote,
         deleteNote,
         bulkImportLeads,
         addProject,
@@ -1316,6 +1888,22 @@ export function CRMProvider({ children }: { children: React.ReactNode }) {
         addTeamMember,
         updateTeamMember,
         deleteTeamMember,
+        activeMemberId,
+        setActiveMemberId,
+        teamPresence,
+        setMyActivityStatus,
+        tasks,
+        addTask,
+        updateTask,
+        toggleTask,
+        deleteTask,
+        crmNotes,
+        addCRMNote,
+        updateCRMNote,
+        togglePinCRMNote,
+        deleteCRMNote,
+        scratchpadText,
+        setScratchpadText,
         inboundSubmissions,
         addInboundSubmission,
         convertInboundToLead,
@@ -1345,8 +1933,13 @@ export function CRMProvider({ children }: { children: React.ReactNode }) {
         setInstagramDMLeadModal,
         emailComposerLeadModal,
         setEmailComposerLeadModal,
+        scheduleFollowUp,
+        completeFollowUp,
+        deleteFollowUp,
         meetingModalLead,
         setMeetingModalLead,
+        followUpModalLead,
+        setFollowUpModalLead,
         supabaseConfig,
         setSupabaseConfig,
         isSyncing,

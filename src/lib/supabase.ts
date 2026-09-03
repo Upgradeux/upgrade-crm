@@ -1,4 +1,4 @@
-import { Lead, Project, InboundSubmission, SupabaseConfig } from '@/types/crm';
+import { Lead, Project, InboundSubmission, SupabaseConfig, TeamMember, TeamPresenceRecord } from '@/types/crm';
 
 export const SUPABASE_SQL_SCHEMA = `-- ============================================================================
 -- SUPABASE DATABASE SCHEMA FOR WEB & AI AGENCY CRM
@@ -92,16 +92,67 @@ export function getSupabaseEnvConfig(): { url: string; anonKey: string; isConfig
   };
 }
 
+/**
+ * Safe fetch wrapper that handles network errors, timeouts, and unconfigured URLs cleanly
+ * without throwing uncaught exceptions, AbortErrors, or crashing Next.js dev overlays.
+ */
+async function safeSupabaseFetch(url: string, options: RequestInit, timeoutMs = 4000): Promise<Response | null> {
+  if (!url || typeof url !== 'string' || (!url.startsWith('http://') && !url.startsWith('https://'))) {
+    return null;
+  }
+  try {
+    const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+    let timer: any = null;
+
+    const fetchOpts: RequestInit = {
+      ...options,
+      ...(controller ? { signal: controller.signal } : {}),
+    };
+
+    const fetchPromise = (async () => {
+      try {
+        return await fetch(url, fetchOpts);
+      } catch {
+        return null;
+      }
+    })();
+
+    const timeoutPromise = new Promise<null>((resolve) => {
+      timer = setTimeout(() => {
+        if (controller) {
+          try {
+            controller.abort();
+          } catch {}
+        }
+        resolve(null);
+      }, timeoutMs);
+    });
+
+    const res = await Promise.race([fetchPromise, timeoutPromise]);
+    if (timer) clearTimeout(timer);
+    return res;
+  } catch {
+    return null;
+  }
+}
+
 export async function testSupabaseConnection(url: string, anonKey: string): Promise<{ success: boolean; message: string }> {
   try {
+    if (!url || !anonKey) {
+      return { success: false, message: 'Please provide both Supabase URL and Anon Key.' };
+    }
     const cleanUrl = url.replace(/\/+$/, '');
-    const res = await fetch(`${cleanUrl}/rest/v1/leads?select=id&limit=1`, {
+    const res = await safeSupabaseFetch(`${cleanUrl}/rest/v1/leads?select=id&limit=1`, {
       method: 'GET',
       headers: {
         apikey: anonKey,
         Authorization: `Bearer ${anonKey}`,
       },
-    });
+    }, 5000);
+
+    if (!res) {
+      return { success: false, message: 'Could not connect to Supabase endpoint (Network timeout or invalid URL).' };
+    }
 
     if (res.ok) {
       return { success: true, message: 'Successfully connected to Supabase PostgreSQL database!' };
@@ -111,11 +162,11 @@ export async function testSupabaseConnection(url: string, anonKey: string): Prom
         message: 'Connected to Supabase! (Note: Remember to run the SQL migration script to create the `leads` table).',
       };
     } else {
-      const errText = await res.text();
+      const errText = await res.text().catch(() => '');
       return { success: false, message: `Supabase Error (${res.status}): ${errText || 'Invalid credentials'}` };
     }
   } catch (error: any) {
-    return { success: false, message: error.message || 'Failed to connect to Supabase endpoint.' };
+    return { success: false, message: error?.message || 'Failed to connect to Supabase endpoint.' };
   }
 }
 
@@ -146,7 +197,14 @@ export async function syncLeadsToSupabase(leads: Lead[], config: SupabaseConfig)
       location: l.location || null,
       phone: l.phone || null,
       email: l.email || null,
-      socials: l.socials || {},
+      socials: {
+        ...(l.socials || {}),
+        _activeFollowUp: l.activeFollowUp || null,
+        _followUps: l.followUps || [],
+        _nextFollowUpDate: l.nextFollowUpDate || null,
+        _bookedMeetingDate: l.bookedMeetingDate || null,
+        _googleMeetLink: l.googleMeetLink || null,
+      },
       status: l.status,
       outreach_stage: l.outreachStage,
       deal_value: l.dealValue || 0,
@@ -158,7 +216,7 @@ export async function syncLeadsToSupabase(leads: Lead[], config: SupabaseConfig)
       updated_at: new Date().toISOString(),
     }));
 
-    const res = await fetch(`${cleanUrl}/rest/v1/leads`, {
+    const res = await safeSupabaseFetch(`${cleanUrl}/rest/v1/leads`, {
       method: 'POST',
       headers: {
         apikey: config.anonKey,
@@ -169,9 +227,8 @@ export async function syncLeadsToSupabase(leads: Lead[], config: SupabaseConfig)
       body: JSON.stringify(formatted),
     });
 
-    return res.ok;
-  } catch (e) {
-    console.error('Failed to sync leads to Supabase:', e);
+    return Boolean(res && res.ok);
+  } catch {
     return false;
   }
 }
@@ -180,7 +237,7 @@ export async function fetchLeadsFromSupabase(config: SupabaseConfig): Promise<Le
   if (!config.isConnected || !config.url || !config.anonKey) return null;
   try {
     const cleanUrl = config.url.replace(/\/+$/, '');
-    const res = await fetch(`${cleanUrl}/rest/v1/leads?select=*&order=created_at.desc`, {
+    const res = await safeSupabaseFetch(`${cleanUrl}/rest/v1/leads?select=*&order=created_at.desc`, {
       method: 'GET',
       headers: {
         apikey: config.anonKey,
@@ -188,8 +245,10 @@ export async function fetchLeadsFromSupabase(config: SupabaseConfig): Promise<Le
       },
     });
 
-    if (!res.ok) return null;
-    const data = await res.json();
+    if (!res || !res.ok) return null;
+    const data = await res.json().catch(() => null);
+    if (!Array.isArray(data)) return null;
+
     return data.map((d: any) => ({
       id: d.id,
       companyName: d.company_name,
@@ -199,6 +258,7 @@ export async function fetchLeadsFromSupabase(config: SupabaseConfig): Promise<Le
       phone: d.phone,
       email: d.email,
       socials: d.socials || {},
+      source: d.source || 'Google Maps',
       status: d.status,
       outreachStage: d.outreach_stage,
       dealValue: Number(d.deal_value) || 0,
@@ -206,11 +266,15 @@ export async function fetchLeadsFromSupabase(config: SupabaseConfig): Promise<Le
       leadOwner: d.lead_owner,
       notes: d.notes || [],
       lastContactedAt: d.last_contacted_at,
+      activeFollowUp: d.active_follow_up || d.socials?._activeFollowUp || undefined,
+      followUps: d.follow_ups || d.socials?._followUps || [],
+      nextFollowUpDate: d.next_follow_up_date || d.socials?._nextFollowUpDate || undefined,
+      bookedMeetingDate: d.booked_meeting_date || d.socials?._bookedMeetingDate || undefined,
+      googleMeetLink: d.google_meet_link || d.socials?._googleMeetLink || undefined,
       createdAt: d.created_at,
       updatedAt: d.updated_at,
     }));
-  } catch (e) {
-    console.error('Failed to fetch from Supabase:', e);
+  } catch {
     return null;
   }
 }
@@ -237,13 +301,13 @@ export async function syncProjectsToSupabase(projects: Project[], config: Supaba
       live_url: p.liveUrl || null,
       client_access_key: p.clientAccessKey || null,
       client_notes: p.clientNotes || null,
-      industry: p.industry || null,
-      industry_space_id: p.industrySpaceId || null,
+      industry: p.industry || 'General',
+      industry_space_id: p.industrySpaceId || 'all',
       created_at: p.createdAt,
       updated_at: new Date().toISOString(),
     }));
 
-    const res = await fetch(`${cleanUrl}/rest/v1/projects`, {
+    const res = await safeSupabaseFetch(`${cleanUrl}/rest/v1/projects`, {
       method: 'POST',
       headers: {
         apikey: config.anonKey,
@@ -254,9 +318,8 @@ export async function syncProjectsToSupabase(projects: Project[], config: Supaba
       body: JSON.stringify(formatted),
     });
 
-    return res.ok;
-  } catch (e) {
-    console.error('Failed to sync projects to Supabase:', e);
+    return Boolean(res && res.ok);
+  } catch {
     return false;
   }
 }
@@ -265,7 +328,7 @@ export async function fetchProjectsFromSupabase(config: SupabaseConfig): Promise
   if (!config.isConnected || !config.url || !config.anonKey) return null;
   try {
     const cleanUrl = config.url.replace(/\/+$/, '');
-    const res = await fetch(`${cleanUrl}/rest/v1/projects?select=*&order=created_at.desc`, {
+    const res = await safeSupabaseFetch(`${cleanUrl}/rest/v1/projects?select=*&order=created_at.desc`, {
       method: 'GET',
       headers: {
         apikey: config.anonKey,
@@ -273,8 +336,10 @@ export async function fetchProjectsFromSupabase(config: SupabaseConfig): Promise
       },
     });
 
-    if (!res.ok) return null;
-    const data = await res.json();
+    if (!res || !res.ok) return null;
+    const data = await res.json().catch(() => null);
+    if (!Array.isArray(data)) return null;
+
     return data.map((d: any) => ({
       id: d.id,
       companyId: d.company_id || '',
@@ -297,8 +362,7 @@ export async function fetchProjectsFromSupabase(config: SupabaseConfig): Promise
       createdAt: d.created_at,
       updatedAt: d.updated_at,
     }));
-  } catch (e) {
-    console.error('Failed to fetch projects from Supabase:', e);
+  } catch {
     return null;
   }
 }
@@ -325,7 +389,7 @@ export async function saveInboundSubmissionToSupabase(
       created_at: submission.createdAt || new Date().toISOString(),
     };
 
-    const res = await fetch(`${cleanUrl}/rest/v1/inbound_submissions`, {
+    const res = await safeSupabaseFetch(`${cleanUrl}/rest/v1/inbound_submissions`, {
       method: 'POST',
       headers: {
         apikey: config.anonKey,
@@ -336,9 +400,8 @@ export async function saveInboundSubmissionToSupabase(
       body: JSON.stringify(row),
     });
 
-    return res.ok;
-  } catch (e) {
-    console.error('Failed to save inbound submission to Supabase:', e);
+    return Boolean(res && res.ok);
+  } catch {
     return false;
   }
 }
@@ -349,7 +412,7 @@ export async function fetchInboundSubmissionsFromSupabase(
   if (!config.isConnected || !config.url || !config.anonKey) return null;
   try {
     const cleanUrl = config.url.replace(/\/+$/, '');
-    const res = await fetch(`${cleanUrl}/rest/v1/inbound_submissions?select=*&order=created_at.desc`, {
+    const res = await safeSupabaseFetch(`${cleanUrl}/rest/v1/inbound_submissions?select=*&order=created_at.desc`, {
       method: 'GET',
       headers: {
         apikey: config.anonKey,
@@ -357,8 +420,10 @@ export async function fetchInboundSubmissionsFromSupabase(
       },
     });
 
-    if (!res.ok) return null;
-    const data = await res.json();
+    if (!res || !res.ok) return null;
+    const data = await res.json().catch(() => null);
+    if (!Array.isArray(data)) return null;
+
     return data.map((d: any) => ({
       id: d.id,
       name: d.name,
@@ -373,8 +438,7 @@ export async function fetchInboundSubmissionsFromSupabase(
       convertedLeadId: d.converted_lead_id || undefined,
       createdAt: d.created_at,
     }));
-  } catch (e) {
-    console.error('Failed to fetch inbound submissions from Supabase:', e);
+  } catch {
     return null;
   }
 }
@@ -391,7 +455,7 @@ export async function updateInboundSubmissionInSupabase(
     if (updates.status) patchBody.status = updates.status;
     if (updates.convertedLeadId) patchBody.converted_lead_id = updates.convertedLeadId;
 
-    const res = await fetch(`${cleanUrl}/rest/v1/inbound_submissions?id=eq.${encodeURIComponent(id)}`, {
+    const res = await safeSupabaseFetch(`${cleanUrl}/rest/v1/inbound_submissions?id=eq.${encodeURIComponent(id)}`, {
       method: 'PATCH',
       headers: {
         apikey: config.anonKey,
@@ -401,9 +465,8 @@ export async function updateInboundSubmissionInSupabase(
       body: JSON.stringify(patchBody),
     });
 
-    return res.ok;
-  } catch (e) {
-    console.error('Failed to update inbound submission in Supabase:', e);
+    return Boolean(res && res.ok);
+  } catch {
     return false;
   }
 }
@@ -415,7 +478,7 @@ export async function deleteInboundSubmissionFromSupabase(
   if (!config.isConnected || !config.url || !config.anonKey) return false;
   try {
     const cleanUrl = config.url.replace(/\/+$/, '');
-    const res = await fetch(`${cleanUrl}/rest/v1/inbound_submissions?id=eq.${encodeURIComponent(id)}`, {
+    const res = await safeSupabaseFetch(`${cleanUrl}/rest/v1/inbound_submissions?id=eq.${encodeURIComponent(id)}`, {
       method: 'DELETE',
       headers: {
         apikey: config.anonKey,
@@ -423,9 +486,8 @@ export async function deleteInboundSubmissionFromSupabase(
       },
     });
 
-    return res.ok;
-  } catch (e) {
-    console.error('Failed to delete inbound submission from Supabase:', e);
+    return Boolean(res && res.ok);
+  } catch {
     return false;
   }
 }
@@ -436,7 +498,7 @@ export async function clearAllInboundSubmissionsFromSupabase(
   if (!config.url || !config.anonKey) return false;
   try {
     const cleanUrl = config.url.replace(/\/+$/, '');
-    const res = await fetch(`${cleanUrl}/rest/v1/inbound_submissions?id=not.is.null`, {
+    const res = await safeSupabaseFetch(`${cleanUrl}/rest/v1/inbound_submissions?id=not.is.null`, {
       method: 'DELETE',
       headers: {
         apikey: config.anonKey,
@@ -444,9 +506,8 @@ export async function clearAllInboundSubmissionsFromSupabase(
       },
     });
 
-    return res.ok;
-  } catch (e) {
-    console.error('Failed to clear inbound submissions from Supabase:', e);
+    return Boolean(res && res.ok);
+  } catch {
     return false;
   }
 }
@@ -459,7 +520,7 @@ export async function deleteLeadFromSupabase(
   try {
     const cleanUrl = config.url.replace(/\/+$/, '');
     const validId = ensureValidUuid(id);
-    const res = await fetch(`${cleanUrl}/rest/v1/leads?id=eq.${encodeURIComponent(validId)}`, {
+    const res = await safeSupabaseFetch(`${cleanUrl}/rest/v1/leads?id=eq.${encodeURIComponent(validId)}`, {
       method: 'DELETE',
       headers: {
         apikey: config.anonKey,
@@ -467,9 +528,8 @@ export async function deleteLeadFromSupabase(
       },
     });
 
-    return res.ok;
-  } catch (e) {
-    console.error('Failed to delete lead from Supabase:', e);
+    return Boolean(res && res.ok);
+  } catch {
     return false;
   }
 }
@@ -482,7 +542,7 @@ export async function deleteProjectFromSupabase(
   try {
     const cleanUrl = config.url.replace(/\/+$/, '');
     const validId = ensureValidUuid(id);
-    const res = await fetch(`${cleanUrl}/rest/v1/projects?id=eq.${encodeURIComponent(validId)}`, {
+    const res = await safeSupabaseFetch(`${cleanUrl}/rest/v1/projects?id=eq.${encodeURIComponent(validId)}`, {
       method: 'DELETE',
       headers: {
         apikey: config.anonKey,
@@ -490,37 +550,106 @@ export async function deleteProjectFromSupabase(
       },
     });
 
-    return res.ok;
-  } catch (e) {
-    console.error('Failed to delete project from Supabase:', e);
+    return Boolean(res && res.ok);
+  } catch {
     return false;
   }
 }
 
-export async function clearAllSupabaseTables(
-  config: { url: string; anonKey: string }
+export async function syncTeamPresenceToSupabase(
+  teamMembers: TeamMember[],
+  presence: TeamPresenceRecord[],
+  config: SupabaseConfig
 ): Promise<boolean> {
+  if (!config.isConnected || !config.url || !config.anonKey) return false;
+  try {
+    const cleanUrl = config.url.replace(/\/+$/, '');
+    const metaRecord = {
+      id: '00000000-0000-4000-8000-000000000099',
+      form_name: '_crm_team_presence_sync',
+      lead_name: 'Team Sync Hub',
+      lead_email: 'team@upgradeux.internal',
+      status: 'synced',
+      payload: {
+        teamMembers,
+        presence,
+        syncedAt: new Date().toISOString(),
+      },
+    };
+
+    const res = await safeSupabaseFetch(`${cleanUrl}/rest/v1/inbound_submissions`, {
+      method: 'POST',
+      headers: {
+        apikey: config.anonKey,
+        Authorization: `Bearer ${config.anonKey}`,
+        'Content-Type': 'application/json',
+        Prefer: 'resolution=merge-duplicates',
+      },
+      body: JSON.stringify([metaRecord]),
+    });
+
+    return Boolean(res && res.ok);
+  } catch {
+    return false;
+  }
+}
+
+export async function fetchTeamPresenceFromSupabase(
+  config: SupabaseConfig
+): Promise<{ teamMembers?: TeamMember[]; presence?: TeamPresenceRecord[] } | null> {
+  if (!config.isConnected || !config.url || !config.anonKey) return null;
+  try {
+    const cleanUrl = config.url.replace(/\/+$/, '');
+    const res = await safeSupabaseFetch(
+      `${cleanUrl}/rest/v1/inbound_submissions?form_name=eq._crm_team_presence_sync&select=*`,
+      {
+        method: 'GET',
+        headers: {
+          apikey: config.anonKey,
+          Authorization: `Bearer ${config.anonKey}`,
+        },
+      }
+    );
+
+    if (!res || !res.ok) return null;
+    const data = await res.json().catch(() => null);
+    if (!Array.isArray(data) || data.length === 0) return null;
+    const item = data[0];
+    return item?.payload || null;
+  } catch {
+    return null;
+  }
+}
+
+export async function clearAllSupabaseTables(config: { url: string; anonKey: string; isConnected?: boolean }): Promise<boolean> {
   if (!config.url || !config.anonKey) return false;
   try {
     const cleanUrl = config.url.replace(/\/+$/, '');
     await Promise.all([
-      fetch(`${cleanUrl}/rest/v1/inbound_submissions?id=not.is.null`, {
+      safeSupabaseFetch(`${cleanUrl}/rest/v1/leads?id=not.is.null`, {
         method: 'DELETE',
-        headers: { apikey: config.anonKey, Authorization: `Bearer ${config.anonKey}` },
+        headers: {
+          apikey: config.anonKey,
+          Authorization: `Bearer ${config.anonKey}`,
+        },
       }),
-      fetch(`${cleanUrl}/rest/v1/leads?id=not.is.null`, {
+      safeSupabaseFetch(`${cleanUrl}/rest/v1/projects?id=not.is.null`, {
         method: 'DELETE',
-        headers: { apikey: config.anonKey, Authorization: `Bearer ${config.anonKey}` },
+        headers: {
+          apikey: config.anonKey,
+          Authorization: `Bearer ${config.anonKey}`,
+        },
       }),
-      fetch(`${cleanUrl}/rest/v1/projects?id=not.is.null`, {
+      safeSupabaseFetch(`${cleanUrl}/rest/v1/inbound_submissions?id=not.is.null`, {
         method: 'DELETE',
-        headers: { apikey: config.anonKey, Authorization: `Bearer ${config.anonKey}` },
+        headers: {
+          apikey: config.anonKey,
+          Authorization: `Bearer ${config.anonKey}`,
+        },
       }),
     ]);
     return true;
-  } catch (e) {
-    console.error('Failed to clear Supabase tables:', e);
+  } catch {
     return false;
   }
 }
-

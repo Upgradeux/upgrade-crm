@@ -10,6 +10,7 @@ import {
   IconUpload,
   IconDotsVertical,
   IconEye,
+  IconMenu2,
 } from '@tabler/icons-react';
 import { exportLeadsToCsv } from '@/lib/exportCsv';
 import { SpaceSwitcher } from '../ui/SpaceSwitcher';
@@ -23,6 +24,7 @@ export function TopNav() {
     setIsNewProjectModalOpen,
     setIsImportModalOpen,
     setIsCommandPaletteOpen,
+    setIsMobileMenuOpen,
   } = useCRM();
 
   const [isMenuOpen, setIsMenuOpen] = useState(false);
@@ -72,11 +74,11 @@ export function TopNav() {
   };
 
   return (
-    <header className="h-[48px] px-4 border-b border-[var(--t-border-color-light)] bg-[var(--t-background-primary)] flex items-center justify-between gap-3 select-none shrink-0 z-10">
+    <header className="h-[48px] px-2 sm:px-4 border-b border-[var(--t-border-color-light)] bg-[var(--t-background-primary)] flex items-center justify-between gap-2 sm:gap-3 select-none shrink-0 z-10">
       {/* Left: View Title & Space Switcher */}
-      <div className="flex items-center gap-3 min-w-0">
-        <div className="flex items-center gap-2 min-w-0">
-          <h1 className="text-[13.5px] font-bold text-[var(--t-font-color-primary)] truncate">
+      <div className="flex items-center gap-2 sm:gap-3 min-w-0">
+        <div className="flex items-center gap-1.5 min-w-0">
+          <h1 className="text-[13px] sm:text-[13.5px] font-bold text-[var(--t-font-color-primary)] truncate">
             {title}
           </h1>
           <span className="hidden xl:inline-block text-[11px] text-[var(--t-font-color-tertiary)] truncate max-w-[260px]">
@@ -85,19 +87,22 @@ export function TopNav() {
         </div>
 
         {/* Multi-Industry Space Switcher */}
-        <SpaceSwitcher />
+        <div className="shrink-0 hidden xs:block">
+          <SpaceSwitcher />
+        </div>
       </div>
 
       {/* Right Controls: Search, CSV, and Quick Add */}
-      <div className="flex items-center gap-2 shrink-0">
+      <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
         {/* Command Palette Trigger Search Box */}
         <button
           onClick={() => setIsCommandPaletteOpen(true)}
-          className="h-[32px] px-2.5 rounded-[8px] bg-[var(--t-background-transparent-lighter)] border border-[var(--t-border-color-medium)] hover:border-[var(--t-border-color-strong)] flex items-center gap-2 text-[12px] text-[var(--t-font-color-tertiary)] hover:text-[var(--t-font-color-secondary)] transition-colors cursor-pointer w-[180px] sm:w-[220px] justify-between"
+          className="h-[30px] sm:h-[32px] px-2 sm:px-2.5 rounded-[8px] bg-[var(--t-background-transparent-lighter)] border border-[var(--t-border-color-medium)] hover:border-[var(--t-border-color-strong)] flex items-center gap-1.5 sm:gap-2 text-[11.5px] sm:text-[12px] text-[var(--t-font-color-tertiary)] hover:text-[var(--t-font-color-secondary)] transition-colors cursor-pointer w-auto sm:w-[220px] justify-between"
+          title="Search anything (⌘K)"
         >
           <div className="flex items-center gap-1.5 truncate">
             <IconSearch size={14} className="shrink-0" />
-            <span className="truncate">Search leads, projects...</span>
+            <span className="truncate hidden sm:inline">Search phone, link, user...</span>
           </div>
           <kbd className="hidden sm:inline-flex px-1.5 py-0.5 rounded-[4px] bg-[var(--t-background-transparent-light)] text-[10px] font-mono border border-[var(--t-border-color-light)] text-[var(--t-font-color-secondary)]">
             ⌘K
@@ -108,10 +113,11 @@ export function TopNav() {
         <div className="relative">
           <Button
             variant="secondary"
-            size="md"
-            leftIcon={<IconDotsVertical size={14} />}
+            size="sm"
+            leftIcon={<IconDotsVertical size={13} />}
             onClick={() => setIsMenuOpen((prev) => !prev)}
             title="Import/Export Tools"
+            className="h-[30px] sm:h-[32px] px-2"
           />
 
           {isMenuOpen && (
@@ -150,20 +156,24 @@ export function TopNav() {
         {currentView === 'projects' ? (
           <Button
             variant="primary"
-            size="md"
-            leftIcon={<IconPlus size={14} />}
+            size="sm"
+            leftIcon={<IconPlus size={13} />}
             onClick={() => setIsNewProjectModalOpen(true)}
+            className="h-[30px] sm:h-[32px] text-[11px] sm:text-[12px] px-2.5 sm:px-3"
           >
-            New Deliverable
+            <span className="hidden xs:inline">New Deliverable</span>
+            <span className="xs:hidden">Project</span>
           </Button>
         ) : (
           <Button
             variant="primary"
-            size="md"
-            leftIcon={<IconPlus size={14} />}
+            size="sm"
+            leftIcon={<IconPlus size={13} />}
             onClick={() => setIsNewLeadModalOpen(true)}
+            className="h-[30px] sm:h-[32px] text-[11px] sm:text-[12px] px-2.5 sm:px-3"
           >
-            Add Client Lead
+            <span className="hidden xs:inline">Add Client Lead</span>
+            <span className="xs:hidden">Lead</span>
           </Button>
         )}
       </div>

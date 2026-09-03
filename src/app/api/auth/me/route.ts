@@ -12,19 +12,27 @@ export async function GET(req: NextRequest) {
       const decoded = JSON.parse(Buffer.from(sessionCookie, 'base64').toString('utf-8'));
       const adminEmail = (process.env.ADMIN_EMAIL || '').trim().toLowerCase();
 
-      // Check if session belongs to valid admin email and has not expired (30 days)
+      const FOUNDER_EMAILS = [
+        'skalambe520@gmail.com',
+        'iamsurajsavle@gmail.com',
+        'upgradeux.agency@gmail.com',
+        adminEmail,
+      ].filter(Boolean);
+
+      // Check if session belongs to valid admin/founder email and has not expired (30 days)
       const maxAgeMs = 1000 * 60 * 60 * 24 * 30;
       if (
         decoded &&
-        decoded.email === adminEmail &&
+        FOUNDER_EMAILS.includes(decoded.email) &&
         Date.now() - (decoded.issuedAt || 0) < maxAgeMs
       ) {
         return NextResponse.json({
           authenticated: true,
           user: {
             email: decoded.email,
-            name: decoded.name || 'upgradeUX Admin',
-            role: decoded.role || 'superadmin',
+            name: decoded.name || 'Founder',
+            memberId: decoded.memberId || (decoded.email.includes('suraj') ? 'member-suraj' : 'member-swapnil'),
+            role: decoded.role || 'Founder',
           },
         });
       }

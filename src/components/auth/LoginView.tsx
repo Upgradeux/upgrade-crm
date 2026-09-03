@@ -52,7 +52,7 @@ export function LoginView() {
   };
 
   return (
-    <div className="min-h-screen w-screen bg-[var(--t-background-primary)] text-[var(--t-font-color-primary)] flex flex-col items-center justify-center p-4 relative overflow-hidden select-none">
+    <div className="min-h-screen w-screen bg-[var(--t-background-primary)] text-[var(--t-font-color-primary)] flex flex-col items-center justify-center p-4 relative overflow-hidden">
       {/* Background Subtle Gradient Glow */}
       <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[500px] h-[500px] bg-[#5d4ef7]/5 rounded-full blur-3xl pointer-events-none" />
 
@@ -85,12 +85,12 @@ export function LoginView() {
           </div>
         )}
 
-        {/* Credentials Form */}
+        {/* Secure Credentials Form */}
         <form onSubmit={handleSubmit} className="space-y-3.5">
           {/* Email Field */}
           <div className="space-y-1">
             <label className="text-[10.5px] font-semibold text-[var(--t-font-color-tertiary)] uppercase tracking-wider block">
-              Admin Email
+              Founder Email
             </label>
             <div className="relative flex items-center">
               <div className="absolute left-[9px] text-[var(--t-font-color-tertiary)] pointer-events-none">
@@ -102,7 +102,7 @@ export function LoginView() {
                 autoFocus
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                placeholder="name@agency.com"
+                placeholder="your-email@gmail.com"
                 className="w-full h-[34px] pl-[30px] pr-2 text-[12.5px] bg-[var(--t-background-primary)] border border-[var(--t-border-color-medium)] rounded-[6px] outline-none text-[var(--t-font-color-primary)] placeholder-[var(--t-font-color-tertiary)] focus:border-[#5d4ef7] transition-all font-mono"
               />
             </div>

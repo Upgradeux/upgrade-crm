@@ -22,8 +22,9 @@ import {
   IconBrandWhatsapp,
   IconBrandX,
   IconMail,
+  IconClock,
 } from '@tabler/icons-react';
-import { formatCurrency, formatDate, getGoogleMapsUrl, getTwitterUrl } from '@/lib/utils';
+import { formatCurrency, formatDate, getGoogleMapsUrl, getTwitterUrl, matchLeadSearch } from '@/lib/utils';
 
 export function AllLeadsView() {
   const {
@@ -35,6 +36,7 @@ export function AllLeadsView() {
     setWhatsAppLeadModal,
     setInstagramDMLeadModal,
     setEmailComposerLeadModal,
+    setFollowUpModalLead,
     activeSpaceId,
     currency,
     timezone,
@@ -58,12 +60,13 @@ export function AllLeadsView() {
 
   const statusFilterOptions = [
     { value: 'All', label: 'All Statuses' },
+    { value: 'Leads', label: 'Leads' },
     { value: 'Not Contacted', label: 'Not Contacted' },
     { value: 'Contacted', label: 'Contacted' },
-    { value: 'Booked Call', label: 'Booked Meeting' },
-    { value: 'In Processing / Proposal', label: 'Proposal Sent' },
-    { value: 'Won', label: 'Won' },
+    { value: 'Booked Meeting', label: 'Booked Meeting' },
+    { value: 'Proposal Sent', label: 'Proposal Sent' },
     { value: 'Lost', label: 'Lost' },
+    { value: 'Won', label: 'Won' },
   ];
 
   const serviceFilterOptions = [
@@ -78,15 +81,16 @@ export function AllLeadsView() {
   const filteredLeads = useMemo(() => {
     return leads
       .filter((lead) => {
-        const matchesSearch =
-          !search ||
-          lead.companyName.toLowerCase().includes(search.toLowerCase()) ||
-          lead.contactName?.toLowerCase().includes(search.toLowerCase()) ||
-          lead.email.toLowerCase().includes(search.toLowerCase()) ||
-          lead.location.toLowerCase().includes(search.toLowerCase());
-
-        const matchesStatus = statusFilter === 'All' || lead.status === statusFilter;
-        const matchesService = serviceFilter === 'All' || lead.serviceInterest === serviceFilter;
+        const matchesSearch = matchLeadSearch(lead, search);
+        const matchesStatus =
+          statusFilter === 'All' ||
+          lead.status === statusFilter ||
+          (statusFilter === 'Booked Meeting' && lead.status === 'Booked Call') ||
+          (statusFilter === 'Proposal Sent' && lead.status === 'In Processing / Proposal');
+        const matchesService =
+          serviceFilter === 'All' ||
+          lead.serviceInterest === serviceFilter ||
+          (lead.services && lead.services.includes(serviceFilter as ServiceType));
         const matchesSource = sourceFilter === 'All' || lead.source === sourceFilter;
 
         return matchesSearch && matchesStatus && matchesService && matchesSource;
@@ -119,22 +123,22 @@ export function AllLeadsView() {
   };
 
   return (
-    <div className="flex-1 h-[calc(100vh-48px)] p-3 overflow-hidden bg-[var(--t-background-primary)] flex flex-col gap-2 select-none">
+    <div className="flex-1 h-[calc(100vh-48px)] p-3 overflow-hidden bg-[var(--t-background-primary)] flex flex-col gap-2">
       {/* Twenty Style Compact Horizontal Toolbar */}
-      <div className="h-[38px] px-2.5 rounded-[6px] bg-[var(--t-background-secondary)] border border-[var(--t-border-color-light)] flex items-center justify-between gap-2.5 shrink-0">
+      <div className="p-2 sm:px-2.5 sm:py-1.5 rounded-[6px] bg-[var(--t-background-secondary)] border border-[var(--t-border-color-light)] flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 shrink-0">
         {/* Search Input */}
-        <div className="w-[180px] sm:w-[220px]">
+        <div className="w-full sm:w-[220px]">
           <Input
             placeholder="Search leads..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             leftIcon={<IconSearch size={13} />}
-            className="h-[26px] text-[12px] bg-[var(--t-background-primary)]"
+            className="h-[26px] text-[12px] bg-[var(--t-background-primary)] w-full"
           />
         </div>
 
         {/* Filter Dropdowns (Inline Horizontal) */}
-        <div className="flex items-center gap-1.5 flex-1 min-w-0">
+        <div className="flex items-center gap-1.5 overflow-x-auto pb-0.5 sm:pb-0 flex-1 min-w-0">
           <div className="w-[120px] shrink-0">
             <Dropdown
               value={sourceFilter}
@@ -155,7 +159,7 @@ export function AllLeadsView() {
             />
           </div>
 
-          <div className="w-[135px] shrink-0 hidden md:block">
+          <div className="w-[135px] shrink-0">
             <Dropdown
               value={serviceFilter}
               onChange={setServiceFilter}
@@ -173,10 +177,9 @@ export function AllLeadsView() {
                 setServiceFilter('All');
                 setSourceFilter('All');
               }}
-              className="text-[11px] text-[var(--t-font-color-tertiary)] hover:text-[var(--t-font-color-primary)] px-1 cursor-pointer"
-              title="Reset Filters"
+              className="text-[11px] text-[#5d4ef7] hover:underline cursor-pointer shrink-0 px-1 whitespace-nowrap"
             >
-              Reset
+              Reset Filters
             </button>
           )}
         </div>
@@ -298,6 +301,14 @@ export function AllLeadsView() {
                       {lead.contactName}
                     </div>
                   )}
+                  {lead.activeFollowUp && !lead.activeFollowUp.completed && (
+                    <div className="pt-0.5">
+                      <span className="inline-flex items-center gap-1 px-1.5 py-0.2 rounded-[3px] bg-amber-500/15 border border-amber-500/30 text-amber-400 font-mono text-[9.5px]">
+                        <IconClock size={9} />
+                        <span>Follow-Up ({lead.activeFollowUp.channel})</span>
+                      </span>
+                    </div>
+                  )}
                 </td>
 
                 {/* Deal Value */}
@@ -357,6 +368,13 @@ export function AllLeadsView() {
                 {/* Actions */}
                 <td className="py-1.5 px-3 text-right whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
                   <div className="flex items-center justify-end gap-1">
+                    <button
+                      onClick={() => setFollowUpModalLead(lead)}
+                      className="p-1 text-[var(--t-font-color-tertiary)] hover:text-amber-400 rounded transition-colors"
+                      title="Schedule Follow-Up"
+                    >
+                      <IconClock size={13} />
+                    </button>
                     {lead.phone && (
                       <button
                         onClick={() => setWhatsAppLeadModal(lead)}

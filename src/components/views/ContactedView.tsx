@@ -20,7 +20,7 @@ import {
   IconMail,
   IconVideo,
 } from '@tabler/icons-react';
-import { formatCurrency, formatRelativeTime, formatDate, getGoogleMapsUrl, getTwitterUrl } from '@/lib/utils';
+import { formatCurrency, formatRelativeTime, formatDate, getGoogleMapsUrl, getTwitterUrl, matchLeadSearch } from '@/lib/utils';
 
 export function ContactedView() {
   const {
@@ -30,6 +30,7 @@ export function ContactedView() {
     setWhatsAppLeadModal,
     setInstagramDMLeadModal,
     setEmailComposerLeadModal,
+    setFollowUpModalLead,
     addNote,
     currency,
   } = useCRM();
@@ -41,18 +42,14 @@ export function ContactedView() {
 
   // Filter leads in dialogue
   const activeLeads = leads.filter((l) => {
-    if (l.status === 'Not Contacted') return false;
-    if (filterChip === 'Booked Call') if (l.status !== 'Booked Call') return false;
-    if (filterChip === 'In Processing / Proposal') if (l.status !== 'In Processing / Proposal') return false;
-    if (search) {
-      const q = search.toLowerCase();
-      return (
-        l.companyName.toLowerCase().includes(q) ||
-        l.contactName?.toLowerCase().includes(q) ||
-        l.location.toLowerCase().includes(q)
-      );
+    if (l.status === 'Not Contacted' || l.status === 'Leads') return false;
+    if (filterChip === 'Booked Call') {
+      if (l.status !== 'Booked Call' && l.status !== 'Booked Meeting') return false;
     }
-    return true;
+    if (filterChip === 'In Processing / Proposal') {
+      if (l.status !== 'In Processing / Proposal' && l.status !== 'Proposal Sent') return false;
+    }
+    return matchLeadSearch(l, search);
   });
 
   const handleSaveQuickNote = (leadId: string) => {
@@ -63,21 +60,21 @@ export function ContactedView() {
   };
 
   return (
-    <div className="flex-1 h-[calc(100vh-48px)] p-3 overflow-hidden bg-[var(--t-background-primary)] flex flex-col gap-2 select-none">
+    <div className="flex-1 h-[calc(100vh-48px)] p-3 overflow-hidden bg-[var(--t-background-primary)] flex flex-col gap-2">
       {/* Twenty Style Compact Horizontal Toolbar */}
-      <div className="h-[38px] px-2.5 rounded-[6px] bg-[var(--t-background-secondary)] border border-[var(--t-border-color-light)] flex items-center justify-between gap-2.5 shrink-0">
-        <div className="flex items-center gap-2 flex-1 min-w-0">
-          <div className="w-[180px] sm:w-[220px]">
+      <div className="p-2 sm:px-2.5 sm:py-1.5 rounded-[6px] bg-[var(--t-background-secondary)] border border-[var(--t-border-color-light)] flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 shrink-0">
+        <div className="flex flex-col sm:flex-row sm:items-center gap-2 flex-1 min-w-0">
+          <div className="w-full sm:w-[220px]">
             <Input
               placeholder="Search contacted leads..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               leftIcon={<IconSearch size={13} />}
-              className="h-6.5 text-[12px] bg-[var(--t-background-primary)]"
+              className="h-6.5 text-[12px] bg-[var(--t-background-primary)] w-full"
             />
           </div>
 
-          <div className="flex items-center gap-1">
+          <div className="flex items-center gap-1 overflow-x-auto pb-0.5 sm:pb-0">
             {[
               { id: 'all', label: 'All Active' },
               { id: 'Booked Call', label: 'Booked Meetings' },
@@ -86,7 +83,7 @@ export function ContactedView() {
               <button
                 key={chip.id}
                 onClick={() => setFilterChip(chip.id as any)}
-                className={`h-[24px] px-2 rounded-[4px] text-[11px] font-medium transition-colors cursor-pointer ${
+                className={`h-[24px] px-2 rounded-[4px] text-[11px] font-medium transition-colors cursor-pointer whitespace-nowrap ${
                   filterChip === chip.id
                     ? 'bg-[var(--t-btn-primary-bg)] text-[var(--t-btn-primary-text)] font-semibold shadow-2xs'
                     : 'text-[var(--t-font-color-secondary)] hover:text-[var(--t-font-color-primary)] hover:bg-[var(--t-background-transparent-light)]'
@@ -138,6 +135,14 @@ export function ContactedView() {
                       {lead.contactName}
                     </div>
                   )}
+                  {lead.activeFollowUp && !lead.activeFollowUp.completed && (
+                    <div className="pt-0.5">
+                      <span className="inline-flex items-center gap-1 px-1.5 py-0.2 rounded-[3px] bg-amber-500/15 border border-amber-500/30 text-amber-400 font-mono text-[9.5px]">
+                        <IconClock size={9} />
+                        <span>Follow-Up ({lead.activeFollowUp.channel})</span>
+                      </span>
+                    </div>
+                  )}
                 </td>
 
                 {/* Deal Value */}
@@ -170,6 +175,13 @@ export function ContactedView() {
                 {/* Actions */}
                 <td className="py-1.5 px-3 text-right whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
                   <div className="flex items-center justify-end gap-1">
+                    <button
+                      onClick={() => setFollowUpModalLead(lead)}
+                      className="p-1 text-[var(--t-font-color-tertiary)] hover:text-amber-400 rounded transition-colors"
+                      title="Schedule Follow-Up"
+                    >
+                      <IconClock size={13} />
+                    </button>
                     <Button
                       variant="subtle"
                       size="sm"

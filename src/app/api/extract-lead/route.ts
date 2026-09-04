@@ -39,6 +39,7 @@ const CACHE_TTL_MS = 15 * 60 * 1000;
 // Regex helpers
 const EMAIL_REGEX = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/gi;
 const IN_MOBILE_REGEX = /(?:\+91[\s-]?)?[6789]\d{4}[\s-]?\d{5}\b/g;
+const IN_MOBILE_ZERO_REGEX = /\b0[6789]\d{4}[\s-]?\d{5}\b/g;
 const IN_LANDLINE_REGEX = /\b0\d{2,4}[-\s]?\d{6,8}\b/g;
 const US_PHONE_REGEX = /\b(?:\+1[-. ]?)?\(?[2-9]\d{2}\)?[-. ]?[2-9]\d{2}[-. ]?\d{4}\b/g;
 const UK_PHONE_REGEX = /\b(?:\+44|0)[1-9]\d{8,9}\b/g;
@@ -108,7 +109,8 @@ const KNOWN_INVALID_NAMES = new Set([
   'locobiz', 'worldplaces', 'nearbuy', 'wedmegood', 'at duckduckgo', 'duckduckgo feedback', 'home', 'about',
   'services', 'pricing', 'reviews', 'photos', 'videos', 'locations', 'address', 'phone', 'email', 'website',
   'hours', 'ratings', 'overview', 'direction', 'directions', 'call now', 'book now', 'send message',
-  'security analyst', 'software engineer', 'web developer', 'marketing specialist', 'pest control'
+  'security analyst', 'software engineer', 'web developer', 'marketing specialist', 'pest control',
+  'ship', 'proprietorship', 'partnership', 'proprietor', 'director', 'founder', 'partnership firm'
 ]);
 
 function isJobTitleOrInvalidName(name: string, companyName = ''): boolean {
@@ -124,7 +126,7 @@ function isJobTitleOrInvalidName(name: string, companyName = ''): boolean {
   if (JOB_TITLE_WORDS.has(lastWord)) return true;
 
   // Check company noun endings
-  const companyNouns = ['services', 'service', 'solutions', 'enterprises', 'studio', 'salon', 'clinic', 'agency', 'company', 'pvt', 'ltd', 'firm', 'hub', 'care', 'center', 'store', 'shop'];
+  const companyNouns = ['services', 'service', 'solutions', 'enterprises', 'studio', 'salon', 'clinic', 'agency', 'company', 'pvt', 'ltd', 'firm', 'hub', 'care', 'center', 'store', 'shop', 'ship'];
   if (companyNouns.includes(lastWord)) return true;
 
   return false;
@@ -135,7 +137,7 @@ const CITIES = [
   'Delhi', 'New Delhi', 'Gurgaon', 'Gurugram', 'Noida', 'Faridabad', 'Ghaziabad',
   'Bengaluru', 'Bangalore', 'Whitefield', 'Koramangala', 'Indiranagar', 'HSR Layout', 'Jayanagar',
   'Hyderabad', 'Secunderabad', 'HITEC City', 'Gachibowli', 'Jubilee Hills', 'Banjara Hills',
-  'Pune', 'Kothrud', 'Viman Nagar', 'Hinjewadi', 'Baner', 'Kalyani Nagar', 'Wakad', 'Aundh', 'Katraj', 'Swargate', 'Hadapsar',
+  'Pune', 'Kothrud', 'Viman Nagar', 'Hinjewadi', 'Baner', 'Kalyani Nagar', 'Wakad', 'Aundh', 'Katraj', 'Swargate', 'Hadapsar', 'Maharshi Nagar', 'Market Yard', 'Chakan', 'Satara Road',
   'Chennai', 'Kolkata', 'Ahmedabad', 'Surat', 'Jaipur', 'Lucknow', 'Kanpur', 'Nagpur', 'Indore', 'Kochi', 'Goa', 'Chandigarh',
   'London', 'Manchester', 'Birmingham', 'New York', 'Los Angeles', 'Chicago', 'Houston', 'Dallas', 'Austin', 'San Francisco', 'Miami', 'Toronto', 'Vancouver', 'Sydney', 'Melbourne', 'Dubai', 'Abu Dhabi', 'Singapore'
 ];
@@ -217,16 +219,18 @@ async function safeFetchHtml(url: string, timeoutMs = 4500): Promise<{ html: str
 const INVALID_LOCATION_WORDS = new Set([
   'official', 'website', 'contact', 'home', 'business', 'info', 'page', 'profile', 'dm', 'book',
   'link', 'store', 'shop', 'online', 'welcome', 'about', 'services', 'pricing', 'reviews', 'ratings',
-  'all rights reserved', 'privacy policy', 'terms', 'help', 'search', 'view', 'address', 'directions'
+  'all rights reserved', 'privacy policy', 'terms', 'help', 'search', 'view', 'address', 'directions',
+  'undefined'
 ]);
 
 // Clean address string to concise "Area, City"
 function cleanLocationString(raw: string): string {
   if (!raw) return '';
   let clean = raw
+    .replace(/\s*listed under\b.*$/gi, '')
     .replace(/\s*(?:[-–|•]\s*(?:AskLaila|Locobiz|Justdial|WedMeGood|D&B|Facebook|Instagram|LinkedIn|India|IndiaMART|Sulekha|Zomato|Swiggy|Google|Reviews|Ratings|Website|Contact|WorldPlaces|HealthFrog|Nearbuy)).*$/gi, '')
     .replace(/^https?:\/\/[^\s]+/i, '')
-    .replace(/\b(?:Opposite|Opp|Near|Behind|Beside|Sector-\d+|Shop No \d+|Floor \d+|Plot No \d+)\b[^\n,)]*/gi, '')
+    .replace(/\b(?:Opposite|Opp|Near|Behind|Beside|Sector-\d+|Shop No \d+|Floor \d+|Plot No \d+|House No \d+|Lane No \d+)\b[^\n,)]*/gi, '')
     .replace(/\b(?:Maharashtra|Karnataka|Tamil Nadu|Telangana|Gujarat|Rajasthan|Uttar Pradesh|Haryana|West Bengal)\b/gi, '')
     .replace(/\b\d{6}\b/g, '') // Remove 6-digit postal pincodes
     .replace(/[-_]/g, ' ')
@@ -250,9 +254,9 @@ function cleanLocationString(raw: string): string {
   }
 
   // Ensure City is attached if area is recognized
-  if (/Bandra/i.test(clean) && !/Mumbai/i.test(clean)) {
+  if (/Bandra|Borivali|Andheri|Khar|Juhu|Worli|Powai/i.test(clean) && !/Mumbai/i.test(clean)) {
     clean = `${clean}, Mumbai`;
-  } else if (/Katraj|Swargate|Kothrud|Baner|Hinjewadi|Wakad/i.test(clean) && !/Pune/i.test(clean)) {
+  } else if (/Katraj|Swargate|Kothrud|Baner|Hinjewadi|Wakad|Maharshi Nagar|Market Yard|Chakan|Satara Road/i.test(clean) && !/Pune/i.test(clean)) {
     clean = `${clean}, Pune`;
   } else if (/Koramangala|Indiranagar|Whitefield|HSR/i.test(clean) && !/Bangalore|Bengaluru/i.test(clean)) {
     clean = `${clean}, Bangalore`;
@@ -280,11 +284,20 @@ function extractCleanEmails(html: string): string[] {
   return Array.from(new Set(cleaned));
 }
 
-// Extract phone numbers
+// Extract phone numbers (handles leading zero formats like 084120 14757)
 function extractPhoneNumbers(html: string): { primary?: string; alternate?: string } {
   const candidates: string[] = [];
 
-  // 1. Indian Mobile (+91 or standard 10 digits starting 6,7,8,9)
+  // 1. Mobile with leading 0 (e.g. 084120 14757)
+  for (const m of html.matchAll(IN_MOBILE_ZERO_REGEX)) {
+    const digits = m[0].replace(/\D/g, '');
+    if (digits.length === 11 && digits.startsWith('0')) {
+      const clean = cleanIndianMobile(digits);
+      if (!candidates.includes(clean)) candidates.push(clean);
+    }
+  }
+
+  // 2. Indian Mobile (+91 or standard 10 digits starting 6,7,8,9)
   for (const m of html.matchAll(IN_MOBILE_REGEX)) {
     const digits = m[0].replace(/\D/g, '');
     if (digits.length === 10 || (digits.length === 12 && digits.startsWith('91'))) {
@@ -293,7 +306,7 @@ function extractPhoneNumbers(html: string): { primary?: string; alternate?: stri
     }
   }
 
-  // 2. Indian Landlines with STD code (e.g. 022-26401234, 020-24361234)
+  // 3. Indian Landlines with STD code (e.g. 022-26401234, 020-24361234)
   for (const m of html.matchAll(IN_LANDLINE_REGEX)) {
     const digits = m[0].replace(/\D/g, '');
     if (digits.length >= 10 && digits.length <= 11) {
@@ -302,7 +315,7 @@ function extractPhoneNumbers(html: string): { primary?: string; alternate?: stri
     }
   }
 
-  // 3. US & UK Phone Numbers
+  // 4. US & UK Phone Numbers
   for (const m of html.matchAll(US_PHONE_REGEX)) {
     const val = m[0].trim();
     if (!candidates.includes(val)) candidates.push(val);
@@ -329,6 +342,25 @@ function cleanIndianMobile(digits: string): string {
   return digits;
 }
 
+function isRelevantInstagramHandle(handle: string, companyName: string): boolean {
+  if (!handle || !companyName) return false;
+  const h = handle.toLowerCase().replace(/^@+/, '').replace(/[._-]/g, '');
+  const cParts = companyName.toLowerCase().replace(/[^a-z0-9\s]/g, '').split(/\s+/).filter((p) => p.length > 2);
+  
+  if (cParts.length <= 1) {
+    return h.includes(cParts[0] || '');
+  }
+
+  // Multi-word company (e.g. Snehal Pest Control or Salon Muah)
+  const matchedParts = cParts.filter((p) => h.includes(p));
+  if (matchedParts.length >= 2) return true;
+
+  const joined = cParts.join('');
+  if (h.includes(joined) || joined.includes(h)) return true;
+
+  return false;
+}
+
 // Extract Instagram Handle from any search HTML (direct links, encoded URLs, captions, title snippets)
 function extractInstagramHandle(html: string, companyName = ''): string | undefined {
   if (!html) return undefined;
@@ -351,23 +383,23 @@ function extractInstagramHandle(html: string, companyName = ''): string | undefi
   for (const regex of igPatterns) {
     for (const m of html.matchAll(regex)) {
       const h = m[1].toLowerCase().replace(/[/?#].*$/, '');
-      if (!invalidHandles.includes(h) && h.length >= 3) {
+      if (!invalidHandles.includes(h) && h.length >= 3 && isRelevantInstagramHandle(h, companyName)) {
         return `@${h}`;
       }
     }
     for (const m of decoded.matchAll(regex)) {
       const h = m[1].toLowerCase().replace(/[/?#].*$/, '');
-      if (!invalidHandles.includes(h) && h.length >= 3) {
+      if (!invalidHandles.includes(h) && h.length >= 3 && isRelevantInstagramHandle(h, companyName)) {
         return `@${h}`;
       }
     }
   }
 
-  // 2. Search snippet text near "Followers" (e.g. "@salon_muah • 93K Followers")
+  // 2. Search snippet text near "Followers"
   const nearMatch = html.match(/([a-zA-Z0-9_.]+)\s*(?:\(@([a-zA-Z0-9_.]+)\))?[^<]{0,80}\b\d+(?:\.\d+)?[KkMmB]?\s+Followers/i);
   if (nearMatch) {
     const candidate = (nearMatch[2] || nearMatch[1]).toLowerCase().replace(/^@+/, '');
-    if (!invalidHandles.includes(candidate) && candidate.length >= 3) {
+    if (!invalidHandles.includes(candidate) && candidate.length >= 3 && isRelevantInstagramHandle(candidate, companyName)) {
       return `@${candidate}`;
     }
   }
@@ -409,7 +441,7 @@ function extractContactPerson(html: string, companyName: string): string | undef
   }
 
   // 3. Explicit Director/Founder/Owner pattern: "Founder: First Last"
-  const dirMatch = html.match(/(?:Director|Directors|Founder|Founders|Owner|Owners|Proprietor|Proprietors)\s*[:–-]?\s*([A-Z][a-z]+(?:\s+and\s+[A-Z][a-z]+)?(?:\s+[A-Z]['’]?[A-Za-z]+)?)/i);
+  const dirMatch = html.match(/\b(?:Director|Directors|Founder|Founders|Owner|Owners|Proprietor|Proprietors)\b\s*[:–-]?\s*([A-Z][a-z]+(?:\s+and\s+[A-Z][a-z]+)?(?:\s+[A-Z]['’]?[A-Za-z]+)?)/i);
   if (dirMatch && dirMatch[1]) {
     const name = dirMatch[1].replace(/\s+\band\b\s+/gi, ' & ').trim();
     if (!isJobTitleOrInvalidName(name, companyName)) {
@@ -910,18 +942,18 @@ export async function POST(req: NextRequest) {
           }
         }
 
-        // 7. Rating & Review Count
+        // 7. Rating & Review Count (Ignores 0.0 unrated entries)
         const ratingMatch =
-          searchHtml.match(/Rated\s*(\d\.\d)\s*based on\s*(\d+)\s*Customer Reviews/i) ||
-          searchHtml.match(/(\d\.\d)\s*(?:\/5|stars|★|\s*rating)[^\d]*(\d+)\s*(?:reviews|votes|ratings)/i) ||
-          searchHtml.match(/Rating:\s*(\d\.\d)[^\d]*(\d+)\s*reviews/i) ||
-          searchHtml.match(/Rated\s*(\d\.\d)\/5[^\d]*(\d+)\s*Ratings/i) ||
-          searchHtml.match(/(\d\.\d)\s*(?:\d\.\d)?\s*\((\d+)\s*(?:ratings|reviews|votes)\)/i) ||
-          searchHtml.match(/(\d\.\d)\s*(?:\/5|★|stars)/i);
+          searchHtml.match(/Rated\s*([1-5](?:\.\d)?)\s*based on\s*([1-9]\d*)\s*Customer Reviews/i) ||
+          searchHtml.match(/([1-5]\.\d)\s*(?:\/5|stars|★|\s*rating)[^\d]*([1-9]\d*)\s*(?:reviews|votes|ratings)/i) ||
+          searchHtml.match(/Rating:\s*([1-5]\.\d)[^\d]*([1-9]\d*)\s*reviews/i) ||
+          searchHtml.match(/Rated\s*([1-5]\.\d)\/5[^\d]*([1-9]\d*)\s*Ratings/i) ||
+          searchHtml.match(/([1-5]\.\d)\s*(?:\d\.\d)?\s*\(([1-9]\d*)\s*(?:ratings|reviews|votes)\)/i) ||
+          searchHtml.match(/([1-5]\.\d)\s*(?:\/5|★|stars)/i);
 
-        if (ratingMatch) {
+        if (ratingMatch && parseFloat(ratingMatch[1]) > 0) {
           data.rating = parseFloat(ratingMatch[1]);
-          if (ratingMatch[2]) {
+          if (ratingMatch[2] && parseInt(ratingMatch[2], 10) > 0) {
             data.reviewCount = parseInt(ratingMatch[2], 10);
             data.confidenceFields.push(`Rating: ${data.rating} (${data.reviewCount} Reviews)`);
             data.notes = `Rated ${data.rating}/5.0 (${data.reviewCount} Reviews)`;

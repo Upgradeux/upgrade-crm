@@ -140,12 +140,31 @@ const CITIES = [
   'London', 'Manchester', 'Birmingham', 'New York', 'Los Angeles', 'Chicago', 'Houston', 'Dallas', 'Austin', 'San Francisco', 'Miami', 'Toronto', 'Vancouver', 'Sydney', 'Melbourne', 'Dubai', 'Abu Dhabi', 'Singapore'
 ];
 
+const GENERIC_INDUSTRY_WORDS = new Set([
+  'pest', 'control', 'service', 'services', 'salon', 'beauty', 'clinic', 'hospital',
+  'store', 'shop', 'solutions', 'studio', 'cafe', 'restaurant', 'cleaning', 'plumbing',
+  'dental', 'hair', 'spa', 'agency', 'consulting', 'management', 'enterprises', 'firm',
+  'group', 'india', 'pune', 'mumbai', 'delhi', 'center', 'centre', 'care', 'hub', 'point',
+  'house', 'world', 'city', 'best', 'top', 'near', 'fast', 'quick', 'good', 'direct', 'online'
+]);
+
 function isLikelyCompanyWebsite(rawUrl: string, companyName: string): boolean {
   if (!rawUrl || isDirectoryUrl(rawUrl)) return false;
   const domain = rawUrl.toLowerCase().replace(/^(https?:\/\/)?(www\.)?/, '').split('/')[0];
   const nameParts = companyName.toLowerCase().replace(/[^a-z0-9\s]/g, '').split(/\s+/).filter((p) => p.length > 2);
-  if (nameParts.length === 0) return true;
-  return nameParts.some((part) => domain.includes(part));
+  if (nameParts.length === 0) return false;
+
+  // Filter out generic industry terms to find distinctive brand keywords
+  const brandKeywords = nameParts.filter((p) => !GENERIC_INDUSTRY_WORDS.has(p));
+
+  // If there are distinctive brand keywords (e.g. "cockroach", "muah", "ayush"), at least one must match the domain
+  if (brandKeywords.length > 0) {
+    return brandKeywords.some((part) => domain.includes(part));
+  }
+
+  // Purely generic search query (e.g. "Pest Control Services"): require at least 2 distinct word matches
+  const matchedCount = nameParts.filter((part) => domain.includes(part)).length;
+  return matchedCount >= 2 && domain.includes(nameParts[0]);
 }
 
 function decodeHtmlEntities(str: string): string {

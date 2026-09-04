@@ -633,7 +633,7 @@ export function SettingsView() {
                   <span>Clear All Workspace Data</span>
                 </div>
                 <div className="text-[11px] text-[var(--t-font-color-tertiary)]">
-                  Removes all cached dummy leads and sample projects to start with a fresh workspace
+                  Permanently purges {leads.length} leads and {projects.length} deliverables directly from Supabase database
                 </div>
               </div>
 
@@ -642,7 +642,7 @@ export function SettingsView() {
                 onClick={() => {
                   confirmAction({
                     title: 'Clear All Workspace Data',
-                    message: 'Are you sure you want to clear all dummy leads and sample projects to start completely fresh? This action cannot be undone.',
+                    message: `Are you sure you want to permanently clear all ${leads.length} leads, ${projects.length} projects, and tasks from Supabase? This action cannot be undone.`,
                     confirmText: 'Clear Everything',
                     variant: 'danger',
                     onConfirm: () => clearAllData(),

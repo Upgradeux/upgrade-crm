@@ -1,4 +1,4 @@
-import { Lead, Project, InboundSubmission, SupabaseConfig, TeamMember, TeamPresenceRecord } from '@/types/crm';
+import { Lead, Project, InboundSubmission, SupabaseConfig, TeamMember, TeamPresenceRecord, CRMTask, CRMNote, IndustrySpace } from '@/types/crm';
 
 export const SUPABASE_SQL_SCHEMA = `-- ============================================================================
 -- SUPABASE DATABASE SCHEMA FOR WEB & AI AGENCY CRM
@@ -654,6 +654,90 @@ export async function fetchTeamPresenceFromSupabase(
   }
 }
 
+export interface WorkspaceMetaPayload {
+  tasks?: CRMTask[];
+  notes?: CRMNote[];
+  scratchpad?: string;
+  spaces?: IndustrySpace[];
+  syncedAt?: string;
+}
+
+export async function syncWorkspaceMetaToSupabase(
+  payload: WorkspaceMetaPayload,
+  config: { url: string; anonKey: string; isConnected?: boolean }
+): Promise<boolean> {
+  const url = (config.url || process.env.NEXT_PUBLIC_SUPABASE_URL || '').trim();
+  const anonKey = (config.anonKey || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '').trim();
+  if (!url || !anonKey) return false;
+  try {
+    const cleanUrl = url.replace(/\/+$/, '');
+    const metaRecord = {
+      id: '00000000-0000-4000-8000-000000000098',
+      name: '_crm_workspace_meta_sync',
+      email: 'workspace@upgradeux.internal',
+      source: 'workspace_meta',
+      status: 'synced',
+      message: JSON.stringify({
+        ...payload,
+        syncedAt: new Date().toISOString(),
+      }),
+      created_at: new Date().toISOString(),
+    };
+
+    const res = await safeSupabaseFetch(`${cleanUrl}/rest/v1/inbound_submissions`, {
+      method: 'POST',
+      headers: {
+        apikey: anonKey,
+        Authorization: `Bearer ${anonKey}`,
+        'Content-Type': 'application/json',
+        Prefer: 'resolution=merge-duplicates',
+      },
+      body: JSON.stringify([metaRecord]),
+    });
+
+    return Boolean(res && res.ok);
+  } catch {
+    return false;
+  }
+}
+
+export async function fetchWorkspaceMetaFromSupabase(
+  config: { url: string; anonKey: string; isConnected?: boolean }
+): Promise<WorkspaceMetaPayload | null> {
+  const url = (config.url || process.env.NEXT_PUBLIC_SUPABASE_URL || '').trim();
+  const anonKey = (config.anonKey || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '').trim();
+  if (!url || !anonKey) return null;
+  try {
+    const cleanUrl = url.replace(/\/+$/, '');
+    const res = await safeSupabaseFetch(
+      `${cleanUrl}/rest/v1/inbound_submissions?name=eq._crm_workspace_meta_sync&select=*`,
+      {
+        method: 'GET',
+        headers: {
+          apikey: anonKey,
+          Authorization: `Bearer ${anonKey}`,
+        },
+      },
+      3000
+    );
+
+    if (!res || !res.ok) return null;
+    const data = await res.json().catch(() => null);
+    if (!Array.isArray(data) || data.length === 0) return null;
+    const item = data[0];
+    if (item?.message) {
+      try {
+        return JSON.parse(item.message);
+      } catch {
+        return null;
+      }
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
 export async function clearAllSupabaseTables(config: { url: string; anonKey: string; isConnected?: boolean }): Promise<boolean> {
   if (!config.url || !config.anonKey) return false;
   try {
@@ -686,3 +770,4 @@ export async function clearAllSupabaseTables(config: { url: string; anonKey: str
     return false;
   }
 }
+

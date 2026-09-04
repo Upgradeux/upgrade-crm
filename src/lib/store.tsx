@@ -1,6 +1,6 @@
 'use client';
 
-import React, { createContext, useContext, useEffect, useState, useMemo } from 'react';
+import React, { createContext, useContext, useEffect, useState, useMemo, useRef } from 'react';
 import {
   Lead,
   Project,
@@ -40,6 +40,7 @@ import {
   syncProjectsToSupabase,
   fetchProjectsFromSupabase,
   fetchInboundSubmissionsFromSupabase,
+  saveInboundSubmissionToSupabase,
   updateInboundSubmissionInSupabase,
   deleteInboundSubmissionFromSupabase,
   deleteLeadFromSupabase,
@@ -48,6 +49,8 @@ import {
   clearAllSupabaseTables,
   syncTeamPresenceToSupabase,
   fetchTeamPresenceFromSupabase,
+  syncWorkspaceMetaToSupabase,
+  fetchWorkspaceMetaFromSupabase,
 } from './supabase';
 
 interface Toast {
@@ -311,9 +314,7 @@ export function CRMProvider({ children }: { children: React.ReactNode }) {
   const [rawProjects, setRawProjects] = useState<Project[]>(INITIAL_PROJECTS);
   const [tasks, setTasks] = useState<CRMTask[]>(INITIAL_TASKS);
   const [crmNotes, setCrmNotes] = useState<CRMNote[]>(INITIAL_NOTES);
-  const [scratchpadText, setScratchpadTextState] = useState<string>(
-    '# Quick Workspace Scratchpad\n- Call back salon lead regarding audio demo\n- Check Google Maps business profile ranking\n- Follow up on proposed Web Dev revisions'
-  );
+  const [scratchpadText, setScratchpadTextState] = useState<string>('');
   const [spaces, setSpaces] = useState<IndustrySpace[]>(DEFAULT_SPACES);
   const [activeSpaceId, setActiveSpaceIdState] = useState<string>('all');
   const [isCreateSpaceModalOpen, setIsCreateSpaceModalOpen] = useState(false);
@@ -360,15 +361,35 @@ export function CRMProvider({ children }: { children: React.ReactNode }) {
   const [timezone, setTimezoneState] = useState<string>('Asia/Kolkata (IST)');
   const [filters, setFilters] = useState<FilterState>(DEFAULT_FILTERS);
 
+  const isClearingRef = useRef(false);
+
+  const persistWorkspaceMeta = (updates?: {
+    tasks?: CRMTask[];
+    notes?: CRMNote[];
+    scratchpad?: string;
+    spaces?: IndustrySpace[];
+  }) => {
+    const envUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || supabaseConfig.url;
+    const envKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || supabaseConfig.anonKey;
+    if (!envUrl || !envKey) return;
+
+    syncWorkspaceMetaToSupabase(
+      {
+        tasks: updates?.tasks ?? tasks,
+        notes: updates?.notes ?? crmNotes,
+        scratchpad: updates?.scratchpad ?? scratchpadText,
+        spaces: updates?.spaces ?? spaces,
+      },
+      { url: envUrl, anonKey: envKey, isConnected: true }
+    );
+  };
+
   const activeSpace = useMemo(() => {
     return spaces.find((s) => s.id === activeSpaceId) || spaces[0] || DEFAULT_SPACES[0];
   }, [spaces, activeSpaceId]);
 
   const setActiveSpaceId = (id: string) => {
     setActiveSpaceIdState(id);
-    try {
-      localStorage.setItem(STORAGE_KEY_ACTIVE_SPACE, id);
-    } catch {}
     const space = spaces.find((s) => s.id === id);
     if (space) {
       addToast(`Switched workspace space to: ${space.name}`, 'info');
@@ -386,14 +407,10 @@ export function CRMProvider({ children }: { children: React.ReactNode }) {
       slug,
       color,
     };
-    setSpaces((prev) => {
-      const updated = [...prev, newSpace];
-      try {
-        localStorage.setItem(STORAGE_KEY_SPACES, JSON.stringify(updated));
-      } catch {}
-      return updated;
-    });
+    const updated = [...spaces, newSpace];
+    setSpaces(updated);
     setActiveSpaceId(id);
+    persistWorkspaceMeta({ spaces: updated });
     addToast(`Created new industry space "${cleanName}"`, 'success');
   };
 
@@ -405,21 +422,17 @@ export function CRMProvider({ children }: { children: React.ReactNode }) {
     const newColor = updates.color !== undefined ? updates.color : oldSpace.color;
     const newSlug = newName ? newName.toLowerCase().replace(/[^a-z0-9]+/g, '-') : oldSpace.slug;
 
-    setSpaces((prev) => {
-      const updated = prev.map((s) => {
-        if (s.id !== id) return s;
-        return {
-          ...s,
-          name: newName || s.name,
-          slug: newSlug,
-          color: newColor,
-        };
-      });
-      try {
-        localStorage.setItem(STORAGE_KEY_SPACES, JSON.stringify(updated));
-      } catch {}
-      return updated;
+    const updated = spaces.map((s) => {
+      if (s.id !== id) return s;
+      return {
+        ...s,
+        name: newName || s.name,
+        slug: newSlug,
+        color: newColor,
+      };
     });
+    setSpaces(updated);
+    persistWorkspaceMeta({ spaces: updated });
 
     if (updates.name && oldSpace.name !== newName) {
       setRawLeads((prev) =>
@@ -435,13 +448,9 @@ export function CRMProvider({ children }: { children: React.ReactNode }) {
 
   const deleteIndustrySpace = (id: string) => {
     if (id === 'all') return;
-    setSpaces((prev) => {
-      const updated = prev.filter((s) => s.id !== id);
-      try {
-        localStorage.setItem(STORAGE_KEY_SPACES, JSON.stringify(updated));
-      } catch {}
-      return updated;
-    });
+    const updated = spaces.filter((s) => s.id !== id);
+    setSpaces(updated);
+    persistWorkspaceMeta({ spaces: updated });
     if (activeSpaceId === id) {
       setActiveSpaceId('all');
     }
@@ -590,9 +599,6 @@ export function CRMProvider({ children }: { children: React.ReactNode }) {
           setCurrentUser(data.user);
           const memberId = data.user.email?.toLowerCase().includes('suraj') ? 'member-suraj' : 'member-swapnil';
           setActiveMemberIdState(memberId);
-          try {
-            localStorage.setItem(STORAGE_KEY_ACTIVE_MEMBER, memberId);
-          } catch {}
         } else {
           setIsAuthenticated(false);
           setCurrentUser(null);
@@ -612,9 +618,6 @@ export function CRMProvider({ children }: { children: React.ReactNode }) {
     setCurrentUser(user);
     const memberId = user.email?.toLowerCase().includes('suraj') ? 'member-suraj' : 'member-swapnil';
     setActiveMemberIdState(memberId);
-    try {
-      localStorage.setItem(STORAGE_KEY_ACTIVE_MEMBER, memberId);
-    } catch {}
   };
 
   const logout = async () => {
@@ -626,141 +629,44 @@ export function CRMProvider({ children }: { children: React.ReactNode }) {
     addToast('Logged out of CRM workspace.', 'info');
   };
 
-  // Hydrate from localStorage on mount
+  // On mount: clear any stale CRM entities from localStorage to ensure 100% Supabase source of truth
   useEffect(() => {
     try {
-      const savedLeads = localStorage.getItem(STORAGE_KEY_LEADS);
-      if (savedLeads) {
+      const CRM_STALE_KEYS = [
+        STORAGE_KEY_LEADS,
+        STORAGE_KEY_PROJECTS,
+        STORAGE_KEY_TEAM,
+        STORAGE_KEY_INBOUND,
+        STORAGE_KEY_TASKS,
+        STORAGE_KEY_NOTES,
+        STORAGE_KEY_SCRATCHPAD,
+        STORAGE_KEY_SPACES,
+        STORAGE_KEY_ACTIVE_SPACE,
+        STORAGE_KEY_ACTIVE_MEMBER,
+        STORAGE_KEY_PRESENCE,
+      ];
+      CRM_STALE_KEYS.forEach((k) => {
         try {
-          const parsed = JSON.parse(savedLeads);
-          if (Array.isArray(parsed)) {
-            const cleaned = parsed.map((l: Lead) => ({
-              ...l,
-              notes: (l.notes || []).filter((n) => {
-                if (!n || !n.content) return false;
-                if (n.type === 'system' || n.author === 'System') return false;
-                if (n.type === 'task') return false;
-                if (n.content.startsWith('Status updated to')) return false;
-                if (n.content.startsWith('Marked as contacted via Cold Queue')) return false;
-                if (n.content.startsWith('Follow-up scheduled for')) return false;
-                if (n.content.startsWith('Follow-up completed on')) return false;
-                if (n.content.startsWith('Demo call scheduled')) return false;
-                return true;
-              }),
-            }));
-            setRawLeads(cleaned);
-          }
+          localStorage.removeItem(k);
         } catch {}
-      }
+      });
+    } catch {}
 
-      const savedProjects = localStorage.getItem(STORAGE_KEY_PROJECTS);
-      if (savedProjects) {
-        const parsed = JSON.parse(savedProjects).map((p: Project) => ({
-          ...p,
-          clientAccessKey:
-            p.clientAccessKey && p.clientAccessKey.startsWith('ux_sec_')
-              ? p.clientAccessKey
-              : generateSecurePortalKey(),
-        }));
-        setRawProjects(parsed);
-      }
-
-      const savedSpaces = localStorage.getItem(STORAGE_KEY_SPACES);
-      if (savedSpaces) setSpaces(JSON.parse(savedSpaces));
-
-      const savedActiveSpace = localStorage.getItem(STORAGE_KEY_ACTIVE_SPACE);
-      if (savedActiveSpace) setActiveSpaceIdState(savedActiveSpace);
-
-      const savedTeam = localStorage.getItem(STORAGE_KEY_TEAM);
-      if (savedTeam) {
-        try {
-          const parsed = JSON.parse(savedTeam);
-          if (Array.isArray(parsed) && parsed.length > 0) {
-            setTeamMembers(parsed);
-          } else {
-            setTeamMembers(DEFAULT_TEAM_MEMBERS);
-          }
-        } catch {
-          setTeamMembers(DEFAULT_TEAM_MEMBERS);
-        }
-      } else {
-        setTeamMembers(DEFAULT_TEAM_MEMBERS);
-      }
-
-      const savedActiveMember = localStorage.getItem(STORAGE_KEY_ACTIVE_MEMBER);
-      if (savedActiveMember) setActiveMemberIdState(savedActiveMember);
-
-      const savedPresence = localStorage.getItem(STORAGE_KEY_PRESENCE);
-      if (savedPresence) {
-        try {
-          setTeamPresence(JSON.parse(savedPresence));
-        } catch {}
-      }
-
-      const savedIntegrations = localStorage.getItem(STORAGE_KEY_INTEGRATIONS);
-      if (savedIntegrations) setIntegrationsConfig(JSON.parse(savedIntegrations));
-
+    // Only restore browser theme preference
+    try {
       const savedTheme = localStorage.getItem(STORAGE_KEY_THEME) as 'dark' | 'light';
       if (savedTheme) {
         setTheme(savedTheme);
         document.documentElement.setAttribute('data-theme', savedTheme);
       }
-
-      const savedAgencyName = localStorage.getItem(STORAGE_KEY_AGENCY_NAME);
-      if (savedAgencyName) setAgencyNameState(savedAgencyName);
-
-      const savedAgencyEmail = localStorage.getItem(STORAGE_KEY_AGENCY_EMAIL);
-      if (savedAgencyEmail) setAgencyEmailState(savedAgencyEmail);
-
-      const savedCurrency = localStorage.getItem(STORAGE_KEY_CURRENCY);
-      if (savedCurrency) setCurrencyState(savedCurrency);
-
-      const savedTimezone = localStorage.getItem(STORAGE_KEY_TIMEZONE);
-      if (savedTimezone) setTimezoneState(savedTimezone);
-
-      const savedSupabase = localStorage.getItem(STORAGE_KEY_SUPABASE);
-      if (savedSupabase) setSupabaseConfigState(JSON.parse(savedSupabase));
-
-      const savedInbound = localStorage.getItem(STORAGE_KEY_INBOUND);
-      if (savedInbound) {
-        try {
-          const parsed = JSON.parse(savedInbound);
-          if (Array.isArray(parsed)) {
-            const clean = parsed.filter(
-              (s) =>
-                (s.email && s.email.trim().length > 3) ||
-                (s.phone && s.phone.trim().length > 4) ||
-                (s.message && s.message.trim().length > 2) ||
-                (s.name && s.name !== 'Inbound Prospect' && s.name.trim().length > 1)
-            );
-            setInboundSubmissions(clean);
-          }
-        } catch {}
-      }
-
-      const savedTasks = localStorage.getItem(STORAGE_KEY_TASKS);
-      if (savedTasks) setTasks(JSON.parse(savedTasks));
-
-      const savedNotes = localStorage.getItem(STORAGE_KEY_NOTES);
-      if (savedNotes) setCrmNotes(JSON.parse(savedNotes));
-
-      const savedScratchpad = localStorage.getItem(STORAGE_KEY_SCRATCHPAD);
-      if (savedScratchpad) setScratchpadTextState(savedScratchpad);
-    } catch (e) {
-      console.warn('Could not read from localStorage:', e);
-    }
-  }, []);
-
-  // Save Inbound Submissions
-  useEffect(() => {
-    try {
-      localStorage.setItem(STORAGE_KEY_INBOUND, JSON.stringify(inboundSubmissions));
     } catch {}
-  }, [inboundSubmissions]);
+  }, []);
 
   // Background Auto-Sync on Mount & Periodic Polling with Supabase Cloud DB
   useEffect(() => {
     const autoSyncFromCloud = async () => {
+      if (isClearingRef.current) return;
+
       const envUrl = (process.env.NEXT_PUBLIC_SUPABASE_URL || supabaseConfig.url || '').trim();
       const envKey = (process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || supabaseConfig.anonKey || '').trim();
       
@@ -771,12 +677,15 @@ export function CRMProvider({ children }: { children: React.ReactNode }) {
 
       try {
         const config = { url: envUrl, anonKey: envKey, isConnected: true };
-        const [remoteLeads, remoteInbound, remoteProjects, remoteTeamData] = await Promise.all([
+        const [remoteLeads, remoteInbound, remoteProjects, remoteTeamData, remoteWorkspaceMeta] = await Promise.all([
           fetchLeadsFromSupabase(config).catch(() => null),
           fetchInboundSubmissionsFromSupabase(config).catch(() => null),
           fetchProjectsFromSupabase(config).catch(() => null),
           fetchTeamPresenceFromSupabase(config).catch(() => null),
+          fetchWorkspaceMetaFromSupabase(config).catch(() => null),
         ]);
+
+        if (isClearingRef.current) return;
 
         if (remoteTeamData) {
           if (remoteTeamData.teamMembers && remoteTeamData.teamMembers.length > 0) {
@@ -809,7 +718,7 @@ export function CRMProvider({ children }: { children: React.ReactNode }) {
         }
 
         // Supabase Cloud Database is the Master Source of Truth across all devices
-        if (remoteLeads && Array.isArray(remoteLeads) && remoteLeads.length > 0) {
+        if (remoteLeads && Array.isArray(remoteLeads)) {
           const cleaned = remoteLeads.map((l: Lead) => ({
             ...l,
             notes: (l.notes || []).filter((n) => {
@@ -827,7 +736,7 @@ export function CRMProvider({ children }: { children: React.ReactNode }) {
           setRawLeads(cleaned);
         }
 
-        if (remoteProjects && Array.isArray(remoteProjects) && remoteProjects.length > 0) {
+        if (remoteProjects && Array.isArray(remoteProjects)) {
           setRawProjects(remoteProjects);
         }
 
@@ -836,6 +745,8 @@ export function CRMProvider({ children }: { children: React.ReactNode }) {
             (s) =>
               s.name !== '_crm_team_presence_sync' &&
               s.id !== '00000000-0000-4000-8000-000000000099' &&
+              s.name !== '_crm_workspace_meta_sync' &&
+              s.id !== '00000000-0000-4000-8000-000000000098' &&
               ((s.email && s.email.trim().length > 3) ||
                 (s.phone && s.phone.trim().length > 4) ||
                 (s.message && s.message.trim().length > 2) ||
@@ -843,8 +754,23 @@ export function CRMProvider({ children }: { children: React.ReactNode }) {
           );
           setInboundSubmissions(cleanRemote);
         }
+
+        if (remoteWorkspaceMeta) {
+          if (Array.isArray(remoteWorkspaceMeta.tasks)) {
+            setTasks(remoteWorkspaceMeta.tasks);
+          }
+          if (Array.isArray(remoteWorkspaceMeta.notes)) {
+            setCrmNotes(remoteWorkspaceMeta.notes);
+          }
+          if (typeof remoteWorkspaceMeta.scratchpad === 'string') {
+            setScratchpadTextState(remoteWorkspaceMeta.scratchpad);
+          }
+          if (Array.isArray(remoteWorkspaceMeta.spaces) && remoteWorkspaceMeta.spaces.length > 0) {
+            setSpaces(remoteWorkspaceMeta.spaces);
+          }
+        }
       } catch {
-        // Silently fallback to local storage
+        // Silently fallback
       }
     };
 
@@ -1006,34 +932,6 @@ export function CRMProvider({ children }: { children: React.ReactNode }) {
       document.removeEventListener('visibilitychange', handleVisibility);
     };
   }, [supabaseConfig.isConnected, supabaseConfig.url, supabaseConfig.anonKey, activeMemberId, teamMembers, teamPresence]);
-
-  // Save Leads
-  useEffect(() => {
-    try {
-      localStorage.setItem(STORAGE_KEY_LEADS, JSON.stringify(rawLeads));
-    } catch {}
-  }, [rawLeads]);
-
-  // Save Projects
-  useEffect(() => {
-    try {
-      localStorage.setItem(STORAGE_KEY_PROJECTS, JSON.stringify(rawProjects));
-    } catch {}
-  }, [rawProjects]);
-
-  // Save Team
-  useEffect(() => {
-    try {
-      localStorage.setItem(STORAGE_KEY_TEAM, JSON.stringify(teamMembers));
-    } catch {}
-  }, [teamMembers]);
-
-  // Save Integrations
-  useEffect(() => {
-    try {
-      localStorage.setItem(STORAGE_KEY_INTEGRATIONS, JSON.stringify(integrationsConfig));
-    } catch {}
-  }, [integrationsConfig]);
 
   // Handle Theme
   const toggleTheme = () => {
@@ -1587,8 +1485,15 @@ export function CRMProvider({ children }: { children: React.ReactNode }) {
       updatedAt: new Date().toISOString(),
     }));
 
-    setRawLeads((prev) => [...formatted, ...prev]);
+    const updated = [...formatted, ...rawLeads];
+    setRawLeads(updated);
     addToast(`Successfully imported ${formatted.length} leads!`, 'success');
+
+    const envUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || supabaseConfig.url;
+    const envKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || supabaseConfig.anonKey;
+    if (envUrl && envKey) {
+      syncLeadsToSupabase(updated, { url: envUrl, anonKey: envKey, isConnected: true });
+    }
   };
 
   // Project CRUD
@@ -1707,9 +1612,6 @@ export function CRMProvider({ children }: { children: React.ReactNode }) {
   // Team & Presence CRUD
   const setActiveMemberId = (id: string) => {
     setActiveMemberIdState(id);
-    try {
-      localStorage.setItem(STORAGE_KEY_ACTIVE_MEMBER, id);
-    } catch {}
     const member = teamMembers.find((m) => m.id === id);
     if (member) {
       addToast(`Switched active profile to ${member.name}`, 'info');
@@ -1736,9 +1638,6 @@ export function CRMProvider({ children }: { children: React.ReactNode }) {
 
     setTeamPresence((prev) => {
       const updated = { ...prev, [currentMember.id]: newRecord };
-      try {
-        localStorage.setItem(STORAGE_KEY_PRESENCE, JSON.stringify(updated));
-      } catch {}
       return updated;
     });
 
@@ -1803,57 +1702,41 @@ export function CRMProvider({ children }: { children: React.ReactNode }) {
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };
-    setTasks((prev) => {
-      const updated = [newTask, ...prev];
-      try {
-        localStorage.setItem(STORAGE_KEY_TASKS, JSON.stringify(updated));
-      } catch {}
-      return updated;
-    });
+    const updated = [newTask, ...tasks];
+    setTasks(updated);
+    persistWorkspaceMeta({ tasks: updated });
     addToast(`Task created: "${taskData.title}"`, 'success');
   };
 
   const updateTask = (id: string, updates: Partial<CRMTask>) => {
-    setTasks((prev) => {
-      const updated = prev.map((t) => {
-        if (t.id !== id) return t;
-        return { ...t, ...updates, updatedAt: new Date().toISOString() };
-      });
-      try {
-        localStorage.setItem(STORAGE_KEY_TASKS, JSON.stringify(updated));
-      } catch {}
-      return updated;
+    const updated = tasks.map((t) => {
+      if (t.id !== id) return t;
+      return { ...t, ...updates, updatedAt: new Date().toISOString() };
     });
+    setTasks(updated);
+    persistWorkspaceMeta({ tasks: updated });
   };
 
   const toggleTask = (id: string) => {
-    setTasks((prev) => {
-      const updated = prev.map((t) => {
-        if (t.id !== id) return t;
-        const nowCompleted = !t.completed;
-        return {
-          ...t,
-          completed: nowCompleted,
-          status: nowCompleted ? ('done' as const) : ('todo' as const),
-          completedAt: nowCompleted ? new Date().toISOString() : undefined,
-          updatedAt: new Date().toISOString(),
-        };
-      });
-      try {
-        localStorage.setItem(STORAGE_KEY_TASKS, JSON.stringify(updated));
-      } catch {}
-      return updated;
+    const updated = tasks.map((t) => {
+      if (t.id !== id) return t;
+      const nowCompleted = !t.completed;
+      return {
+        ...t,
+        completed: nowCompleted,
+        status: nowCompleted ? ('done' as const) : ('todo' as const),
+        completedAt: nowCompleted ? new Date().toISOString() : undefined,
+        updatedAt: new Date().toISOString(),
+      };
     });
+    setTasks(updated);
+    persistWorkspaceMeta({ tasks: updated });
   };
 
   const deleteTask = (id: string) => {
-    setTasks((prev) => {
-      const updated = prev.filter((t) => t.id !== id);
-      try {
-        localStorage.setItem(STORAGE_KEY_TASKS, JSON.stringify(updated));
-      } catch {}
-      return updated;
-    });
+    const updated = tasks.filter((t) => t.id !== id);
+    setTasks(updated);
+    persistWorkspaceMeta({ tasks: updated });
     addToast('Task deleted', 'info');
   };
 
@@ -1865,58 +1748,40 @@ export function CRMProvider({ children }: { children: React.ReactNode }) {
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };
-    setCrmNotes((prev) => {
-      const updated = [newNote, ...prev];
-      try {
-        localStorage.setItem(STORAGE_KEY_NOTES, JSON.stringify(updated));
-      } catch {}
-      return updated;
-    });
+    const updated = [newNote, ...crmNotes];
+    setCrmNotes(updated);
+    persistWorkspaceMeta({ notes: updated });
     addToast(`Note saved: "${noteData.title}"`, 'success');
   };
 
   const updateCRMNote = (id: string, updates: Partial<CRMNote>) => {
-    setCrmNotes((prev) => {
-      const updated = prev.map((n) => {
-        if (n.id !== id) return n;
-        return { ...n, ...updates, updatedAt: new Date().toISOString() };
-      });
-      try {
-        localStorage.setItem(STORAGE_KEY_NOTES, JSON.stringify(updated));
-      } catch {}
-      return updated;
+    const updated = crmNotes.map((n) => {
+      if (n.id !== id) return n;
+      return { ...n, ...updates, updatedAt: new Date().toISOString() };
     });
+    setCrmNotes(updated);
+    persistWorkspaceMeta({ notes: updated });
   };
 
   const togglePinCRMNote = (id: string) => {
-    setCrmNotes((prev) => {
-      const updated = prev.map((n) => {
-        if (n.id !== id) return n;
-        return { ...n, isPinned: !n.isPinned, updatedAt: new Date().toISOString() };
-      });
-      try {
-        localStorage.setItem(STORAGE_KEY_NOTES, JSON.stringify(updated));
-      } catch {}
-      return updated;
+    const updated = crmNotes.map((n) => {
+      if (n.id !== id) return n;
+      return { ...n, isPinned: !n.isPinned, updatedAt: new Date().toISOString() };
     });
+    setCrmNotes(updated);
+    persistWorkspaceMeta({ notes: updated });
   };
 
   const deleteCRMNote = (id: string) => {
-    setCrmNotes((prev) => {
-      const updated = prev.filter((n) => n.id !== id);
-      try {
-        localStorage.setItem(STORAGE_KEY_NOTES, JSON.stringify(updated));
-      } catch {}
-      return updated;
-    });
+    const updated = crmNotes.filter((n) => n.id !== id);
+    setCrmNotes(updated);
+    persistWorkspaceMeta({ notes: updated });
     addToast('Note deleted', 'info');
   };
 
   const setScratchpadText = (text: string) => {
     setScratchpadTextState(text);
-    try {
-      localStorage.setItem(STORAGE_KEY_SCRATCHPAD, text);
-    } catch {}
+    persistWorkspaceMeta({ scratchpad: text });
   };
 
   // Inbound Submissions
@@ -1929,6 +1794,12 @@ export function CRMProvider({ children }: { children: React.ReactNode }) {
     };
     setInboundSubmissions((prev) => [newSub, ...prev]);
     addToast(`New inbound inquiry from ${newSub.name}!`, 'success');
+
+    const envUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || supabaseConfig.url;
+    const envKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || supabaseConfig.anonKey;
+    if (envUrl && envKey) {
+      saveInboundSubmissionToSupabase(newSub, { url: envUrl, anonKey: envKey });
+    }
   };
 
   const convertInboundToLead = (submissionId: string, targetSpaceId?: string, dealValue: number = 150000) => {
@@ -2008,9 +1879,6 @@ export function CRMProvider({ children }: { children: React.ReactNode }) {
 
   const clearAllInboundSubmissions = async () => {
     setInboundSubmissions([]);
-    try {
-      localStorage.setItem(STORAGE_KEY_INBOUND, JSON.stringify([]));
-    } catch {}
 
     const envUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || supabaseConfig.url;
     const envKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || supabaseConfig.anonKey;
@@ -2022,25 +1890,51 @@ export function CRMProvider({ children }: { children: React.ReactNode }) {
   };
 
   const clearAllData = async () => {
-    setRawLeads([]);
-    setRawProjects([]);
-    setTeamMembers([]);
-    setInboundSubmissions([]);
-    setActiveLeadId(null);
+    isClearingRef.current = true;
     try {
-      localStorage.setItem(STORAGE_KEY_LEADS, JSON.stringify([]));
-      localStorage.setItem(STORAGE_KEY_PROJECTS, JSON.stringify([]));
-      localStorage.setItem(STORAGE_KEY_TEAM, JSON.stringify([]));
-      localStorage.setItem(STORAGE_KEY_INBOUND, JSON.stringify([]));
-    } catch {}
+      const envUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || supabaseConfig.url;
+      const envKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || supabaseConfig.anonKey;
+      if (envUrl && envKey) {
+        await clearAllSupabaseTables({ url: envUrl, anonKey: envKey });
+      }
 
-    const envUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || supabaseConfig.url;
-    const envKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || supabaseConfig.anonKey;
-    if (envUrl && envKey) {
-      await clearAllSupabaseTables({ url: envUrl, anonKey: envKey });
+      setRawLeads([]);
+      setRawProjects([]);
+      setInboundSubmissions([]);
+      setTasks([]);
+      setCrmNotes([]);
+      setScratchpadTextState('');
+      setActiveLeadId(null);
+
+      // Clean out any residual local storage items
+      const CRM_STALE_KEYS = [
+        STORAGE_KEY_LEADS,
+        STORAGE_KEY_PROJECTS,
+        STORAGE_KEY_TEAM,
+        STORAGE_KEY_INBOUND,
+        STORAGE_KEY_TASKS,
+        STORAGE_KEY_NOTES,
+        STORAGE_KEY_SCRATCHPAD,
+        STORAGE_KEY_SPACES,
+        STORAGE_KEY_ACTIVE_SPACE,
+        STORAGE_KEY_ACTIVE_MEMBER,
+        STORAGE_KEY_PRESENCE,
+      ];
+      CRM_STALE_KEYS.forEach((k) => {
+        try {
+          localStorage.removeItem(k);
+        } catch {}
+      });
+
+      setCurrentView('pipeline');
+      addToast('All workspace data and Supabase cloud records cleared. Workspace is 100% clean!', 'success');
+    } catch {
+      addToast('Error clearing workspace records.', 'error');
+    } finally {
+      setTimeout(() => {
+        isClearingRef.current = false;
+      }, 1500);
     }
-
-    addToast('All workspace data and Supabase cloud records cleared. Workspace is 100% clean!', 'success');
   };
 
   return (

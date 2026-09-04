@@ -21,6 +21,7 @@ import {
   IconLink,
 } from '@tabler/icons-react';
 import { formatDate } from '@/lib/utils';
+import { fetchProjectsFromSupabase } from '@/lib/supabase';
 
 function ClientPortalContent() {
   const searchParams = useSearchParams();
@@ -30,21 +31,24 @@ function ClientPortalContent() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    function loadPortalProject() {
+    async function loadPortalProject() {
       if (!key) {
         setLoading(false);
         return;
       }
 
       try {
-        const localProjectsStr = typeof window !== 'undefined' ? localStorage.getItem('upgradeux_crm_projects_v3') : null;
-        if (localProjectsStr) {
-          const parsed: Project[] = JSON.parse(localProjectsStr);
-          const found = parsed.find((p) => p.clientAccessKey === key);
-          if (found) {
-            setProject(found);
-            setLoading(false);
-            return;
+        const envUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
+        const envKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
+        if (envUrl && envKey) {
+          const remoteProjects = await fetchProjectsFromSupabase({ url: envUrl, anonKey: envKey, isConnected: true });
+          if (remoteProjects) {
+            const found = remoteProjects.find((p) => p.clientAccessKey === key);
+            if (found) {
+              setProject(found);
+              setLoading(false);
+              return;
+            }
           }
         }
 

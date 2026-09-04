@@ -123,10 +123,10 @@ export async function POST(req: NextRequest) {
         notes,
       } = body;
 
-      finalName = name || contactName || companyName || 'Inbound Prospect';
-      finalEmail = email || '';
-      finalPhone = phone || '';
-      finalMessage = message || brief || notes || '';
+      finalName = (name || contactName || companyName || '').trim() || (email ? email.split('@')[0] : '') || 'Inbound Lead';
+      finalEmail = (email || '').trim();
+      finalPhone = (phone || '').trim();
+      finalMessage = (message || brief || notes || '').trim();
       source = (body.source as any) || 'Website Contact Form';
 
       if (Array.isArray(interests) && interests.length > 0) {
@@ -136,15 +136,24 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    if (!finalName && !finalEmail && !finalPhone) {
-      if (body.triggerEvent === 'PING' || body.ping || isCalComWebhook) {
+    const hasRealData = Boolean(
+      (finalEmail && finalEmail.length > 3) ||
+      (finalPhone && finalPhone.length > 4) ||
+      (finalMessage && finalMessage.length > 2) ||
+      (body.name && body.name.trim().length > 1) ||
+      (body.contactName && body.contactName.trim().length > 1) ||
+      (body.companyName && body.companyName.trim().length > 1)
+    );
+
+    if (!hasRealData && !isCalComWebhook) {
+      if (body.triggerEvent === 'PING' || body.ping) {
         return NextResponse.json(
-          { success: true, message: 'Cal.com Webhook verified successfully!' },
+          { success: true, message: 'Webhook verified successfully!' },
           { status: 200, headers: { 'Access-Control-Allow-Origin': '*' } }
         );
       }
       return NextResponse.json(
-        { error: 'At least Name, Email, or Phone is required.' },
+        { error: 'At least real Name, Email, Phone, or Message is required.' },
         { status: 400, headers: { 'Access-Control-Allow-Origin': '*' } }
       );
     }

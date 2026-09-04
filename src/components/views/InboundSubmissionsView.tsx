@@ -57,17 +57,26 @@ export function InboundSubmissionsView() {
   const [convertSpaceId, setConvertSpaceId] = useState(activeSpaceId !== 'all' ? activeSpaceId : 'all');
   const [convertDealValue, setConvertDealValue] = useState(150000);
 
-  const filteredSubmissions = inboundSubmissions.filter((sub) => {
+  const validSubmissions = inboundSubmissions.filter((s) => {
+    const hasData =
+      (s.email && s.email.trim().length > 3) ||
+      (s.phone && s.phone.trim().length > 4) ||
+      (s.message && s.message.trim().length > 2) ||
+      (s.name && s.name !== 'Inbound Prospect' && s.name.trim().length > 1);
+    return Boolean(hasData);
+  });
+
+  const filteredSubmissions = validSubmissions.filter((sub) => {
     const matchesSearch = matchSubmissionSearch(sub, search);
     const matchesStatus = statusFilter === 'all' || sub.status === statusFilter;
     const matchesSource = sourceFilter === 'all' || sub.source === sourceFilter;
     return matchesSearch && matchesStatus && matchesSource;
   });
 
-  const countAll = inboundSubmissions.length;
-  const countNew = inboundSubmissions.filter((s) => s.status === 'new').length;
-  const countConverted = inboundSubmissions.filter((s) => s.status === 'converted').length;
-  const countDismissed = inboundSubmissions.filter((s) => s.status === 'dismissed').length;
+  const countAll = validSubmissions.length;
+  const countNew = validSubmissions.filter((s) => s.status === 'new').length;
+  const countConverted = validSubmissions.filter((s) => s.status === 'converted').length;
+  const countDismissed = validSubmissions.filter((s) => s.status === 'dismissed').length;
 
   const handleSimulateTest = () => {
     const samples = [

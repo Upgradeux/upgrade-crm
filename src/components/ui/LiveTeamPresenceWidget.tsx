@@ -128,8 +128,8 @@ export function LiveTeamPresenceWidget() {
       const diffMin = Math.floor(diffMs / 60000);
       const diffHours = Math.floor(diffMin / 60);
 
-      // Online threshold: active within last 10 minutes
-      if (diffMin <= 10) {
+      // Online threshold: active within last 5 minutes
+      if (diffMin <= 5) {
         isOnline = true;
         if (diffMin < 2) {
           timeAgoText = 'Online now';
@@ -151,7 +151,7 @@ export function LiveTeamPresenceWidget() {
     const iconKey = p?.activityIcon || member.activityIcon || 'check';
     const note = p?.statusNote || member.statusNote || '';
 
-    // If offline (>10 min), DO NOT show active status like Calling Clients; show "Offline"
+    // If offline (>5 min), DO NOT show active status like Calling Clients; show "Offline"
     const displayStatus = isOnline ? chosenStatus : 'Offline';
     const icon = isOnline ? getStatusIcon(chosenStatus, iconKey) : <IconMoon size={13} className="text-slate-400" />;
 

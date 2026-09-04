@@ -700,7 +700,21 @@ export function CRMProvider({ children }: { children: React.ReactNode }) {
       if (savedSupabase) setSupabaseConfigState(JSON.parse(savedSupabase));
 
       const savedInbound = localStorage.getItem(STORAGE_KEY_INBOUND);
-      if (savedInbound) setInboundSubmissions(JSON.parse(savedInbound));
+      if (savedInbound) {
+        try {
+          const parsed = JSON.parse(savedInbound);
+          if (Array.isArray(parsed)) {
+            const clean = parsed.filter(
+              (s) =>
+                (s.email && s.email.trim().length > 3) ||
+                (s.phone && s.phone.trim().length > 4) ||
+                (s.message && s.message.trim().length > 2) ||
+                (s.name && s.name !== 'Inbound Prospect' && s.name.trim().length > 1)
+            );
+            setInboundSubmissions(clean);
+          }
+        } catch {}
+      }
 
       const savedTasks = localStorage.getItem(STORAGE_KEY_TASKS);
       if (savedTasks) setTasks(JSON.parse(savedTasks));
@@ -749,7 +763,12 @@ export function CRMProvider({ children }: { children: React.ReactNode }) {
               const remoteIds = new Set(remoteTeamData.teamMembers?.map((m) => m.id));
               const merged = (remoteTeamData.teamMembers || []).map((rm) => {
                 const local = localMap.get(rm.id);
-                return local ? { ...rm, ...local } : rm;
+                if (!local) return rm;
+                if (rm.id === activeMemberId) {
+                  return { ...rm, ...local };
+                } else {
+                  return { ...local, ...rm };
+                }
               });
               const localOnly = prev.filter((m) => !remoteIds.has(m.id));
               return [...merged, ...localOnly];
@@ -759,7 +778,9 @@ export function CRMProvider({ children }: { children: React.ReactNode }) {
             setTeamPresence((prev) => {
               const next = { ...prev };
               remoteTeamData.presence?.forEach((p) => {
-                next[p.memberId] = p;
+                if (p.memberId !== activeMemberId || !next[p.memberId]) {
+                  next[p.memberId] = p;
+                }
               });
               return next;
             });
@@ -812,10 +833,24 @@ export function CRMProvider({ children }: { children: React.ReactNode }) {
         }
 
         if (remoteInbound && remoteInbound.length > 0) {
+          const cleanRemote = remoteInbound.filter(
+            (s) =>
+              (s.email && s.email.trim().length > 3) ||
+              (s.phone && s.phone.trim().length > 4) ||
+              (s.message && s.message.trim().length > 2) ||
+              (s.name && s.name !== 'Inbound Prospect' && s.name.trim().length > 1)
+          );
           setInboundSubmissions((prev) => {
-            const existingIds = new Set(remoteInbound.map((s) => s.id));
-            const localOnly = prev.filter((s) => !existingIds.has(s.id));
-            return [...remoteInbound, ...localOnly];
+            const cleanPrev = prev.filter(
+              (s) =>
+                (s.email && s.email.trim().length > 3) ||
+                (s.phone && s.phone.trim().length > 4) ||
+                (s.message && s.message.trim().length > 2) ||
+                (s.name && s.name !== 'Inbound Prospect' && s.name.trim().length > 1)
+            );
+            const existingIds = new Set(cleanRemote.map((s) => s.id));
+            const localOnly = cleanPrev.filter((s) => !existingIds.has(s.id));
+            return [...cleanRemote, ...localOnly];
           });
         }
       } catch {
@@ -826,61 +861,158 @@ export function CRMProvider({ children }: { children: React.ReactNode }) {
     // Initial fetch on mount
     autoSyncFromCloud();
 
-    // User presence heartbeat - update active user's lastActiveAt when interacting
+    // 5-minute inactivity threshold
+    const INACTIVITY_THRESHOLD_MS = 5 * 60 * 1000;
+
+    // User presence heartbeat - update active user's lastActiveAt and auto-reset to Available/Online if returning from offline
     let lastHeartbeat = 0;
-    const sendHeartbeat = () => {
+    const sendHeartbeat = (isUserAction: boolean = false) => {
       const now = Date.now();
-      if (now - lastHeartbeat < 20000) return; // Throttle to every 20s
+      if (!isUserAction && now - lastHeartbeat < 10000) return; // Throttle to 10s unless user action
       lastHeartbeat = now;
       const currentMember = teamMembers.find((m) => m.id === activeMemberId);
-      if (currentMember) {
-        const nowIso = new Date().toISOString();
-        const updatedPres: TeamPresenceRecord = {
-          memberId: currentMember.id,
-          memberName: currentMember.name,
-          memberEmail: currentMember.email,
-          role: currentMember.role,
-          avatarUrl: currentMember.avatarUrl,
-          avatarColor: currentMember.avatarColor,
-          lastActiveAt: nowIso,
-          activityStatus: currentMember.activityStatus || 'Available / Online',
-          activityIcon: currentMember.activityIcon || 'check',
-          statusNote: currentMember.statusNote,
-        };
-        setTeamPresence((prev) => ({ ...prev, [currentMember.id]: updatedPres }));
-        if (supabaseConfig.isConnected) {
-          const presenceList = Object.values({ ...teamPresence, [currentMember.id]: updatedPres });
-          syncTeamPresenceToSupabase(teamMembers, presenceList, supabaseConfig);
+      if (!currentMember) return;
+
+      const nowIso = new Date().toISOString();
+      const currentPres = teamPresence[currentMember.id];
+      const lastActiveIso = currentPres?.lastActiveAt || currentMember.lastActiveAt;
+
+      // Check if user was offline (>5 minutes of inactivity)
+      let wasOffline = false;
+      if (lastActiveIso) {
+        const diffMs = now - new Date(lastActiveIso).getTime();
+        if (diffMs > INACTIVITY_THRESHOLD_MS) {
+          wasOffline = true;
         }
+      } else {
+        wasOffline = true;
+      }
+
+      // If user was offline and comes back to CRM, auto-reset status to Available/Online
+      const newStatus = wasOffline ? 'Available / Online' : (currentMember.activityStatus || 'Available / Online');
+      const newIcon = wasOffline ? 'check' : (currentMember.activityIcon || 'check');
+      const newNote = wasOffline ? '' : currentMember.statusNote;
+
+      const updatedPres: TeamPresenceRecord = {
+        memberId: currentMember.id,
+        memberName: currentMember.name,
+        memberEmail: currentMember.email,
+        role: currentMember.role,
+        avatarUrl: currentMember.avatarUrl,
+        avatarColor: currentMember.avatarColor,
+        lastActiveAt: nowIso,
+        activityStatus: newStatus,
+        activityIcon: newIcon,
+        statusNote: newNote,
+      };
+
+      setTeamPresence((prev) => ({ ...prev, [currentMember.id]: updatedPres }));
+
+      if (wasOffline && currentMember.activityStatus !== 'Available / Online') {
+        setTeamMembers((prev) =>
+          prev.map((m) =>
+            m.id === currentMember.id
+              ? { ...m, activityStatus: 'Available / Online', activityIcon: 'check', statusNote: '', lastActiveAt: nowIso }
+              : m
+          )
+        );
+      }
+
+      const envUrl = (supabaseConfig.url || process.env.NEXT_PUBLIC_SUPABASE_URL || '').trim();
+      const envKey = (supabaseConfig.anonKey || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '').trim();
+      if (envUrl && envKey) {
+        const config = { url: envUrl, anonKey: envKey, isConnected: true };
+        const updatedMembers = teamMembers.map((m) =>
+          m.id === currentMember.id
+            ? { ...m, activityStatus: newStatus, activityIcon: newIcon, lastActiveAt: nowIso }
+            : m
+        );
+        const presenceList = Object.values({ ...teamPresence, [currentMember.id]: updatedPres });
+        syncTeamPresenceToSupabase(updatedMembers, presenceList, config);
       }
     };
 
-    // Auto-refresh periodically (every 15s) to synchronize seamlessly across laptops, mobiles, and team members
-    const syncInterval = setInterval(autoSyncFromCloud, 15000);
+    // Fast presence sync every 2.5 seconds so teammate status changes appear almost instantly
+    const syncPresenceFast = async () => {
+      const envUrl = (supabaseConfig.url || process.env.NEXT_PUBLIC_SUPABASE_URL || '').trim();
+      const envKey = (supabaseConfig.anonKey || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '').trim();
+      if (!envUrl || !envKey || !envUrl.startsWith('http')) return;
 
-    // Refresh instantly when user focuses the tab or switches back to the app on mobile/desktop
+      try {
+        const config = { url: envUrl, anonKey: envKey, isConnected: true };
+        const remoteTeamData = await fetchTeamPresenceFromSupabase(config);
+        if (remoteTeamData) {
+          if (remoteTeamData.teamMembers && remoteTeamData.teamMembers.length > 0) {
+            setTeamMembers((prev) => {
+              const localMap = new Map(prev.map((m) => [m.id, m]));
+              const remoteIds = new Set(remoteTeamData.teamMembers?.map((m) => m.id));
+              const merged = (remoteTeamData.teamMembers || []).map((rm) => {
+                const local = localMap.get(rm.id);
+                if (!local) return rm;
+                // Remote data for teammate takes priority so their status changes reflect instantly
+                if (rm.id === activeMemberId) {
+                  return { ...rm, ...local };
+                } else {
+                  return { ...local, ...rm };
+                }
+              });
+              const localOnly = prev.filter((m) => !remoteIds.has(m.id));
+              return [...merged, ...localOnly];
+            });
+          }
+          if (remoteTeamData.presence && Array.isArray(remoteTeamData.presence)) {
+            setTeamPresence((prev) => {
+              const next = { ...prev };
+              remoteTeamData.presence?.forEach((p) => {
+                // Remote data for teammate takes priority so their status changes reflect instantly
+                if (p.memberId !== activeMemberId) {
+                  next[p.memberId] = p;
+                } else if (!next[p.memberId]) {
+                  next[p.memberId] = p;
+                }
+              });
+              return next;
+            });
+          }
+        }
+      } catch {}
+    };
+
+    // Full CRM database sync every 15s
+    const syncInterval = setInterval(autoSyncFromCloud, 15000);
+    // Real-time presence sync every 2.5s for instant updates
+    const presenceInterval = setInterval(syncPresenceFast, 2500);
+
+    // Refresh instantly when user interacts, focuses the tab or switches back to the app
     const handleFocus = () => {
-      sendHeartbeat();
+      sendHeartbeat(true);
+      syncPresenceFast();
       autoSyncFromCloud();
     };
 
     const handleVisibility = () => {
       if (document.visibilityState === 'visible') {
-        sendHeartbeat();
+        sendHeartbeat(true);
+        syncPresenceFast();
         autoSyncFromCloud();
       }
     };
 
+    const handleUserInteraction = () => {
+      sendHeartbeat(true);
+    };
+
     window.addEventListener('focus', handleFocus);
-    window.addEventListener('pointerdown', sendHeartbeat);
-    window.addEventListener('keydown', sendHeartbeat);
+    window.addEventListener('pointerdown', handleUserInteraction);
+    window.addEventListener('keydown', handleUserInteraction);
     document.addEventListener('visibilitychange', handleVisibility);
 
     return () => {
       clearInterval(syncInterval);
+      clearInterval(presenceInterval);
       window.removeEventListener('focus', handleFocus);
-      window.removeEventListener('pointerdown', sendHeartbeat);
-      window.removeEventListener('keydown', sendHeartbeat);
+      window.removeEventListener('pointerdown', handleUserInteraction);
+      window.removeEventListener('keydown', handleUserInteraction);
       document.removeEventListener('visibilitychange', handleVisibility);
     };
   }, [supabaseConfig.isConnected, supabaseConfig.url, supabaseConfig.anonKey, activeMemberId, teamMembers, teamPresence]);
@@ -1532,9 +1664,12 @@ export function CRMProvider({ children }: { children: React.ReactNode }) {
     );
     setTeamMembers(updatedMembers);
 
-    if (supabaseConfig.isConnected) {
+    const envUrl = (supabaseConfig.url || process.env.NEXT_PUBLIC_SUPABASE_URL || '').trim();
+    const envKey = (supabaseConfig.anonKey || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '').trim();
+    if (envUrl && envKey) {
+      const config = { url: envUrl, anonKey: envKey, isConnected: true };
       const presenceList = Object.values({ ...teamPresence, [currentMember.id]: newRecord });
-      syncTeamPresenceToSupabase(updatedMembers, presenceList, supabaseConfig);
+      syncTeamPresenceToSupabase(updatedMembers, presenceList, config);
     }
 
     addToast(`Status: ${status}`, 'success');

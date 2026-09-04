@@ -233,8 +233,9 @@ export function FollowUpsView() {
   return (
     <div className="flex-1 h-[calc(100vh-48px)] p-3 overflow-hidden bg-[var(--t-background-primary)] flex flex-col gap-2">
       {/* Top Twenty Style Filter & Search Toolbar */}
-      <div className="p-2 sm:px-2.5 sm:py-1.5 rounded-[6px] bg-[var(--t-background-secondary)] border border-[var(--t-border-color-light)] flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 shrink-0">
-        <div className="flex flex-col sm:flex-row sm:items-center gap-2 flex-1 min-w-0">
+      <div className="p-2 sm:px-2.5 sm:py-1.5 rounded-[6px] bg-[var(--t-background-secondary)] border border-[var(--t-border-color-light)] flex flex-col gap-2 shrink-0">
+        {/* Top Row: Search & Status Tabs */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
           {/* Quick Search */}
           <div className="w-full sm:w-[220px]">
             <Input
@@ -247,7 +248,7 @@ export function FollowUpsView() {
           </div>
 
           {/* Segmented Status Tabs */}
-          <div className="flex items-center bg-[var(--t-background-primary)] p-0.5 rounded-[4px] border border-[var(--t-border-color-light)] text-[11px] overflow-x-auto">
+          <div className="flex items-center bg-[var(--t-background-primary)] p-0.5 rounded-[4px] border border-[var(--t-border-color-light)] text-[11px] overflow-x-auto max-w-full">
             <button
               onClick={() => setActiveTab('all')}
               className={`px-2 py-0.5 rounded-[3px] transition-colors cursor-pointer flex items-center gap-1 whitespace-nowrap ${
@@ -257,7 +258,7 @@ export function FollowUpsView() {
               }`}
             >
               <span>Active</span>
-              <span className="text-[9.5px] px-1 rounded-full bg-[var(--t-background-quaternary)]">
+              <span className="text-[9.5px] px-1 rounded-full bg-[var(--t-background-quaternary)] font-mono">
                 {overdueCount + todayCount + upcomingCount}
               </span>
             </button>
@@ -332,13 +333,13 @@ export function FollowUpsView() {
           </div>
         </div>
 
-        {/* Right Side: Channel Filter + Action Button */}
-        <div className="flex items-center gap-2 shrink-0">
+        {/* Bottom Row: Channels & Schedule Button */}
+        <div className="flex items-center justify-between gap-2 pt-0.5 border-t border-[var(--t-border-color-light)] overflow-hidden">
           {/* Channel Filter Pills */}
-          <div className="flex items-center gap-1 shrink-0 overflow-x-auto pb-0.5 sm:pb-0">
+          <div className="flex items-center gap-1 overflow-x-auto pb-0.5 max-w-full">
             {(
               [
-                { id: 'all', label: 'All Channels', icon: null },
+                { id: 'all', label: 'All', icon: null },
                 { id: 'whatsapp', label: 'WhatsApp', icon: <IconBrandWhatsapp size={11} /> },
                 { id: 'email', label: 'Email', icon: <IconMail size={11} /> },
                 { id: 'instagram', label: 'Instagram', icon: <IconBrandInstagram size={11} /> },
@@ -364,24 +365,24 @@ export function FollowUpsView() {
             size="sm"
             leftIcon={<IconPlus size={13} />}
             onClick={() => setIsSelectLeadModalOpen(true)}
-            className="h-[26px] text-[11px] shrink-0"
+            className="h-[24px] sm:h-[26px] text-[10.5px] sm:text-[11px] px-2 sm:px-3 shrink-0 whitespace-nowrap"
           >
-            Schedule Follow-Up
+            <span>+ Schedule</span>
           </Button>
         </div>
       </div>
 
       {/* Follow-Up List Table */}
-      <div className="flex-1 bg-[var(--t-background-secondary)] border border-[var(--t-border-color-light)] rounded-[6px] flex flex-col overflow-x-auto shadow-2xs">
-        <div className="min-w-[720px] flex-1 flex flex-col overflow-y-auto">
+      <div className="flex-1 bg-[var(--t-background-secondary)] border border-[var(--t-border-color-light)] rounded-[6px] flex flex-col overflow-hidden shadow-2xs">
+        <div className="w-full flex-1 flex flex-col overflow-auto">
           {/* Table Header */}
-          <div className="h-[30px] border-b border-[var(--t-border-color-light)] bg-[var(--t-background-tertiary)] px-3 flex items-center text-[10.5px] font-medium text-[var(--t-font-color-tertiary)] uppercase tracking-wider shrink-0">
-            <div className="w-[200px] sm:w-[240px]">Company & Contact</div>
-            <div className="w-[120px]">Channel</div>
-            <div className="w-[160px]">Scheduled Time</div>
-            <div className="flex-1 min-w-0">Follow-Up Note / Action</div>
-            <div className="w-[100px] text-right">Deal Value</div>
-            <div className="w-[160px] text-right">Actions</div>
+          <div className="min-w-[940px] h-[32px] border-b border-[var(--t-border-color-light)] bg-[var(--t-background-tertiary)] px-3 flex items-center text-[10.5px] font-medium text-[var(--t-font-color-tertiary)] uppercase tracking-wider shrink-0 whitespace-nowrap">
+            <div className="w-[220px] shrink-0 whitespace-nowrap">Company & Contact</div>
+            <div className="w-[110px] shrink-0 whitespace-nowrap">Channel</div>
+            <div className="w-[160px] shrink-0 whitespace-nowrap">Scheduled Time</div>
+            <div className="w-[200px] flex-1 shrink-0 whitespace-nowrap">Follow-Up Note</div>
+            <div className="w-[90px] shrink-0 text-right whitespace-nowrap pr-3">Deal Value</div>
+            <div className="w-[210px] shrink-0 text-right whitespace-nowrap pr-1">Actions</div>
           </div>
 
           {/* Rows Container */}
@@ -420,12 +421,12 @@ export function FollowUpsView() {
                   <div
                     key={item.lead.id + item.followUp.id}
                     onClick={() => openLeadDrawer(item.lead.id)}
-                    className={`px-3 py-2 flex items-center text-[12px] hover:bg-[var(--t-background-primary)] transition-colors cursor-pointer group ${
+                    className={`min-w-[940px] px-3 py-2 flex items-center text-[12px] hover:bg-[var(--t-background-primary)] transition-colors cursor-pointer group ${
                       isCompleted ? 'opacity-60 bg-[var(--t-background-primary)]/40' : ''
                     }`}
                   >
                     {/* Company & Contact */}
-                    <div className="w-[200px] sm:w-[240px] flex flex-col min-w-0 pr-2">
+                    <div className="w-[220px] shrink-0 flex flex-col min-w-0 pr-2">
                       <span className="font-medium text-[var(--t-font-color-primary)] truncate group-hover:text-[#5d4ef7]">
                         {item.lead.companyName}
                       </span>
@@ -435,9 +436,9 @@ export function FollowUpsView() {
                     </div>
 
                     {/* Channel Badge */}
-                    <div className="w-[120px] flex items-center pr-2">
+                    <div className="w-[110px] shrink-0 flex items-center pr-2">
                       <span
-                        className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-[4px] text-[10px] font-medium border ${cfg.badgeClass}`}
+                        className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-[4px] text-[10px] font-medium border whitespace-nowrap ${cfg.badgeClass}`}
                       >
                         {cfg.icon}
                         <span>{cfg.label}</span>
@@ -445,7 +446,7 @@ export function FollowUpsView() {
                     </div>
 
                     {/* Scheduled Time */}
-                    <div className="w-[160px] flex flex-col min-w-0 pr-2">
+                    <div className="w-[160px] shrink-0 flex flex-col min-w-0 pr-2">
                       <span
                         className={`text-[11px] font-mono flex items-center gap-1 ${
                           isOverdue
@@ -464,7 +465,7 @@ export function FollowUpsView() {
                     </div>
 
                     {/* Follow-up Note */}
-                    <div className="flex-1 min-w-0 pr-2">
+                    <div className="w-[200px] flex-1 shrink-0 min-w-0 pr-2">
                       <p className="text-[11px] text-[var(--t-font-color-secondary)] truncate">
                         {item.followUp.note || (
                           <span className="text-[var(--t-font-color-tertiary)] italic">
@@ -475,40 +476,43 @@ export function FollowUpsView() {
                     </div>
 
                     {/* Deal Value */}
-                    <div className="w-[100px] text-right font-mono text-[11.5px] text-[var(--t-font-color-primary)] pr-3">
+                    <div className="w-[90px] shrink-0 text-right font-mono text-[11.5px] text-[var(--t-font-color-primary)] pr-3">
                       {formatCurrency(item.lead.dealValue, currency)}
                     </div>
 
-                    {/* Actions */}
+                    {/* Actions (Horizontal Single Line, Crisp Twenty CRM Aesthetic) */}
                     <div
-                      className="w-[160px] flex items-center justify-end gap-1.5"
+                      className="w-[210px] shrink-0 flex items-center justify-end gap-1.5 pr-1"
                       onClick={(e) => e.stopPropagation()}
                     >
                       {!isCompleted ? (
                         <>
                           <button
+                            type="button"
                             onClick={() => handleExecuteAction(item)}
-                            className={`px-2 py-1 rounded-[4px] text-[10.5px] font-medium border flex items-center gap-1 transition-colors cursor-pointer ${cfg.btnClass}`}
+                            className={`h-[26px] px-2.5 rounded-[4px] text-[11px] font-medium border inline-flex items-center gap-1.5 whitespace-nowrap flex-nowrap shrink-0 transition-colors cursor-pointer shadow-2xs ${cfg.btnClass}`}
                             title={cfg.actionLabel}
                           >
                             {cfg.icon}
-                            <span className="hidden sm:inline">{cfg.actionLabel}</span>
+                            <span className="whitespace-nowrap shrink-0">{cfg.actionLabel}</span>
                           </button>
 
                           <button
+                            type="button"
                             onClick={() => completeFollowUp(item.lead.id, item.followUp.id)}
-                            className="p-1 rounded-[4px] bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30 text-emerald-400 transition-colors cursor-pointer"
+                            className="w-[26px] h-[26px] rounded-[4px] bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/25 text-emerald-400 flex items-center justify-center transition-colors cursor-pointer shrink-0"
                             title="Mark Follow-Up Done"
                           >
-                            <IconCheck size={12} />
+                            <IconCheck size={13} />
                           </button>
 
                           <button
+                            type="button"
                             onClick={() => setFollowUpModalLead(item.lead)}
-                            className="p-1 rounded-[4px] bg-[var(--t-background-primary)] hover:bg-[var(--t-background-tertiary)] border border-[var(--t-border-color-light)] text-[var(--t-font-color-tertiary)] hover:text-[var(--t-font-color-primary)] transition-colors cursor-pointer"
-                            title="Reschedule"
+                            className="w-[26px] h-[26px] rounded-[4px] bg-[var(--t-background-primary)] hover:bg-[var(--t-background-tertiary)] border border-[var(--t-border-color-light)] text-[var(--t-font-color-tertiary)] hover:text-[var(--t-font-color-primary)] flex items-center justify-center transition-colors cursor-pointer shrink-0"
+                            title="Reschedule Follow-Up"
                           >
-                            <IconClock size={12} />
+                            <IconClock size={13} />
                           </button>
                         </>
                       ) : (

@@ -26,6 +26,9 @@ import {
   IconBrandX,
   IconVideo,
   IconSend,
+  IconGlobe,
+  IconTag,
+  IconEdit,
 } from '@tabler/icons-react';
 import { Button } from '../ui/Button';
 import { Badge } from '../ui/Badge';
@@ -835,23 +838,68 @@ export function LeadDetailDrawer() {
             {/* Core Properties Card */}
             <div className="bg-[var(--t-background-secondary)] rounded-[6px] border border-[var(--t-border-color-light)] divide-y divide-[var(--t-border-color-light)] relative z-10">
               <div className="px-3 py-1.5 bg-[var(--t-background-transparent-light)] text-[10px] font-semibold text-[var(--t-font-color-tertiary)] uppercase tracking-wider rounded-t-[5px]">
-                Contact Information
+                Contact & Company Information
+              </div>
+
+              {/* Property: Company Name */}
+              <div className="grid grid-cols-12 items-center px-3 py-1 hover:bg-[var(--t-background-primary)] transition-colors">
+                <div className="col-span-4 flex items-center gap-1.5 text-[11px] text-[var(--t-font-color-tertiary)]">
+                  <IconBuilding size={12} className="shrink-0 text-indigo-400" />
+                  <span className="font-medium text-[var(--t-font-color-primary)]">Company Name</span>
+                </div>
+                <div className="col-span-8">
+                  <input
+                    type="text"
+                    value={activeLead.companyName || ''}
+                    onChange={(e) => updateLead(activeLead.id, { companyName: e.target.value })}
+                    placeholder="Business / Company Name"
+                    className="w-full h-[24px] px-1.5 text-[11.5px] font-medium bg-transparent hover:bg-[var(--t-background-secondary)] focus:bg-[var(--t-background-primary)] border border-transparent hover:border-[var(--t-border-color-light)] focus:border-[var(--t-border-color-focus)] rounded-[3px] outline-none text-[var(--t-font-color-primary)]"
+                  />
+                </div>
               </div>
 
               {/* Property: Contact Name */}
               <div className="grid grid-cols-12 items-center px-3 py-1 hover:bg-[var(--t-background-primary)] transition-colors">
                 <div className="col-span-4 flex items-center gap-1.5 text-[11px] text-[var(--t-font-color-tertiary)]">
                   <IconUser size={12} className="shrink-0" />
-                  <span>Contact Name</span>
+                  <span>Contact Person</span>
                 </div>
                 <div className="col-span-8">
                   <input
                     type="text"
                     value={activeLead.contactName || ''}
                     onChange={(e) => updateLead(activeLead.id, { contactName: e.target.value })}
-                    placeholder="Empty"
+                    placeholder="Contact person / decision maker"
                     className="w-full h-[24px] px-1.5 text-[11.5px] bg-transparent hover:bg-[var(--t-background-secondary)] focus:bg-[var(--t-background-primary)] border border-transparent hover:border-[var(--t-border-color-light)] focus:border-[var(--t-border-color-focus)] rounded-[3px] outline-none text-[var(--t-font-color-primary)]"
                   />
+                </div>
+              </div>
+
+              {/* Property: Website URL */}
+              <div className="grid grid-cols-12 items-center px-3 py-1 hover:bg-[var(--t-background-primary)] transition-colors">
+                <div className="col-span-4 flex items-center gap-1.5 text-[11px] text-[var(--t-font-color-tertiary)]">
+                  <IconGlobe size={12} className="shrink-0 text-sky-400" />
+                  <span>Website URL</span>
+                </div>
+                <div className="col-span-8 flex items-center gap-1">
+                  <input
+                    type="text"
+                    value={activeLead.websiteUrl || ''}
+                    onChange={(e) => updateLead(activeLead.id, { websiteUrl: e.target.value })}
+                    placeholder="https://company.com"
+                    className="flex-1 min-w-0 h-[24px] px-1.5 text-[11.5px] font-mono bg-transparent hover:bg-[var(--t-background-secondary)] focus:bg-[var(--t-background-primary)] border border-transparent hover:border-[var(--t-border-color-light)] focus:border-[var(--t-border-color-focus)] rounded-[3px] outline-none text-[var(--t-font-color-primary)] truncate"
+                  />
+                  {activeLead.websiteUrl && (
+                    <a
+                      href={activeLead.websiteUrl.startsWith('http') ? activeLead.websiteUrl : `https://${activeLead.websiteUrl}`}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="w-[20px] h-[20px] rounded flex items-center justify-center text-[var(--t-font-color-tertiary)] hover:text-sky-400 shrink-0"
+                      title="Open Website in new tab"
+                    >
+                      <IconExternalLink size={11} />
+                    </a>
+                  )}
                 </div>
               </div>
 

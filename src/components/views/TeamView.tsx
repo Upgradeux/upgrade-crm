@@ -21,6 +21,7 @@ import {
   IconTrophy,
   IconPlus,
   IconBrandWhatsapp,
+  IconMoon,
 } from '@tabler/icons-react';
 import { formatCurrency, formatDate, getInitials } from '@/lib/utils';
 import { getStatusIcon } from '../ui/LiveTeamPresenceWidget';
@@ -28,6 +29,7 @@ import { getStatusIcon } from '../ui/LiveTeamPresenceWidget';
 export function TeamView() {
   const {
     teamMembers,
+    teamPresence,
     leads,
     addTeamMember,
     updateTeamMember,
@@ -221,19 +223,32 @@ export function TeamView() {
 
                   {/* Live Activity Status */}
                   <td className="py-1.5 px-3">
-                    <div className="flex items-center gap-1.5 text-[11px]">
-                      <div className="shrink-0">{getStatusIcon(member.activityStatus, member.activityIcon)}</div>
-                      <div className="min-w-0">
-                        <div className="text-[var(--t-font-color-primary)] font-medium truncate max-w-[160px]">
-                          {member.activityStatus || 'Available / Online'}
-                        </div>
-                        {member.statusNote && (
-                          <div className="text-[9.5px] text-[var(--t-font-color-tertiary)] truncate max-w-[160px]">
-                            {member.statusNote}
+                    {(() => {
+                      const p = teamPresence[member.id];
+                      const lastActiveIso = p?.lastActiveAt || member.lastActiveAt;
+                      let isOnline = false;
+                      if (lastActiveIso) {
+                        const diffMin = Math.floor((Date.now() - new Date(lastActiveIso).getTime()) / 60000);
+                        isOnline = diffMin <= 5;
+                      }
+                      const statusText = isOnline ? (p?.activityStatus || member.activityStatus || 'Available / Online') : 'Offline';
+                      const statusIcon = isOnline ? getStatusIcon(member.activityStatus, member.activityIcon) : <IconMoon size={13} className="text-slate-400" />;
+                      return (
+                        <div className="flex items-center gap-1.5 text-[11px]">
+                          <div className="shrink-0">{statusIcon}</div>
+                          <div className="min-w-0">
+                            <div className={`font-medium truncate max-w-[160px] ${isOnline ? 'text-[var(--t-font-color-primary)]' : 'text-[var(--t-font-color-tertiary)]'}`}>
+                              {statusText}
+                            </div>
+                            {member.statusNote && isOnline && (
+                              <div className="text-[9.5px] text-[var(--t-font-color-tertiary)] truncate max-w-[160px]">
+                                {member.statusNote}
+                              </div>
+                            )}
                           </div>
-                        )}
-                      </div>
-                    </div>
+                        </div>
+                      );
+                    })()}
                   </td>
 
                   {/* Assigned Leads Count */}

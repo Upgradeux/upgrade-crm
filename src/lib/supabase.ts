@@ -409,14 +409,16 @@ export async function saveInboundSubmissionToSupabase(
 export async function fetchInboundSubmissionsFromSupabase(
   config: SupabaseConfig
 ): Promise<InboundSubmission[] | null> {
-  if (!config.isConnected || !config.url || !config.anonKey) return null;
+  const url = (config.url || process.env.NEXT_PUBLIC_SUPABASE_URL || '').trim();
+  const anonKey = (config.anonKey || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '').trim();
+  if (!url || !anonKey) return null;
   try {
-    const cleanUrl = config.url.replace(/\/+$/, '');
+    const cleanUrl = url.replace(/\/+$/, '');
     const res = await safeSupabaseFetch(`${cleanUrl}/rest/v1/inbound_submissions?select=*&order=created_at.desc`, {
       method: 'GET',
       headers: {
-        apikey: config.anonKey,
-        Authorization: `Bearer ${config.anonKey}`,
+        apikey: anonKey,
+        Authorization: `Bearer ${anonKey}`,
       },
     });
 
@@ -424,20 +426,30 @@ export async function fetchInboundSubmissionsFromSupabase(
     const data = await res.json().catch(() => null);
     if (!Array.isArray(data)) return null;
 
-    return data.map((d: any) => ({
-      id: d.id,
-      name: d.name,
-      email: d.email || '',
-      phone: d.phone || undefined,
-      interests: Array.isArray(d.interests) ? d.interests : [],
-      message: d.message || '',
-      budget: d.budget || undefined,
-      deadline: d.deadline || undefined,
-      source: d.source || 'Website Contact Form',
-      status: d.status || 'new',
-      convertedLeadId: d.converted_lead_id || undefined,
-      createdAt: d.created_at,
-    }));
+    return data
+      .filter(
+        (d: any) =>
+          d.name !== '_crm_team_presence_sync' &&
+          d.id !== '00000000-0000-4000-8000-000000000099' &&
+          ((d.email && d.email.trim().length > 3) ||
+            (d.phone && d.phone.trim().length > 4) ||
+            (d.message && d.message.trim().length > 2) ||
+            (d.name && d.name !== 'Inbound Prospect' && d.name.trim().length > 1))
+      )
+      .map((d: any) => ({
+        id: d.id,
+        name: d.name,
+        email: d.email || '',
+        phone: d.phone || undefined,
+        interests: Array.isArray(d.interests) ? d.interests : [],
+        message: d.message || '',
+        budget: d.budget || undefined,
+        deadline: d.deadline || undefined,
+        source: d.source || 'Website Contact Form',
+        status: d.status || 'new',
+        convertedLeadId: d.converted_lead_id || undefined,
+        createdAt: d.created_at,
+      }));
   } catch {
     return null;
   }
@@ -561,27 +573,30 @@ export async function syncTeamPresenceToSupabase(
   presence: TeamPresenceRecord[],
   config: SupabaseConfig
 ): Promise<boolean> {
-  if (!config.isConnected || !config.url || !config.anonKey) return false;
+  const url = (config.url || process.env.NEXT_PUBLIC_SUPABASE_URL || '').trim();
+  const anonKey = (config.anonKey || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '').trim();
+  if (!url || !anonKey) return false;
   try {
-    const cleanUrl = config.url.replace(/\/+$/, '');
+    const cleanUrl = url.replace(/\/+$/, '');
     const metaRecord = {
       id: '00000000-0000-4000-8000-000000000099',
-      form_name: '_crm_team_presence_sync',
-      lead_name: 'Team Sync Hub',
-      lead_email: 'team@upgradeux.internal',
+      name: '_crm_team_presence_sync',
+      email: 'team@upgradeux.internal',
+      source: 'system_presence',
       status: 'synced',
-      payload: {
+      message: JSON.stringify({
         teamMembers,
         presence,
         syncedAt: new Date().toISOString(),
-      },
+      }),
+      created_at: new Date().toISOString(),
     };
 
     const res = await safeSupabaseFetch(`${cleanUrl}/rest/v1/inbound_submissions`, {
       method: 'POST',
       headers: {
-        apikey: config.anonKey,
-        Authorization: `Bearer ${config.anonKey}`,
+        apikey: anonKey,
+        Authorization: `Bearer ${anonKey}`,
         'Content-Type': 'application/json',
         Prefer: 'resolution=merge-duplicates',
       },
@@ -597,25 +612,35 @@ export async function syncTeamPresenceToSupabase(
 export async function fetchTeamPresenceFromSupabase(
   config: SupabaseConfig
 ): Promise<{ teamMembers?: TeamMember[]; presence?: TeamPresenceRecord[] } | null> {
-  if (!config.isConnected || !config.url || !config.anonKey) return null;
+  const url = (config.url || process.env.NEXT_PUBLIC_SUPABASE_URL || '').trim();
+  const anonKey = (config.anonKey || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '').trim();
+  if (!url || !anonKey) return null;
   try {
-    const cleanUrl = config.url.replace(/\/+$/, '');
+    const cleanUrl = url.replace(/\/+$/, '');
     const res = await safeSupabaseFetch(
-      `${cleanUrl}/rest/v1/inbound_submissions?form_name=eq._crm_team_presence_sync&select=*`,
+      `${cleanUrl}/rest/v1/inbound_submissions?name=eq._crm_team_presence_sync&select=*`,
       {
         method: 'GET',
         headers: {
-          apikey: config.anonKey,
-          Authorization: `Bearer ${config.anonKey}`,
+          apikey: anonKey,
+          Authorization: `Bearer ${anonKey}`,
         },
-      }
+      },
+      3000
     );
 
     if (!res || !res.ok) return null;
     const data = await res.json().catch(() => null);
     if (!Array.isArray(data) || data.length === 0) return null;
     const item = data[0];
-    return item?.payload || null;
+    if (item?.message) {
+      try {
+        return JSON.parse(item.message);
+      } catch {
+        return null;
+      }
+    }
+    return null;
   } catch {
     return null;
   }

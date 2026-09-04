@@ -267,6 +267,74 @@ function cleanLocationString(raw: string): string {
   return clean.replace(/\s*,\s*,/g, ',').replace(/^,\s*/, '').replace(/,\s*$/, '').trim();
 }
 
+// Extract GPS Coordinates from Google Maps URLs or HTML
+function extractCoordinatesFromMapsUrl(url: string, html = ''): { lat: number; lng: number } | null {
+  if (!url && !html) return null;
+
+  // 1. Check pinpoint coordinates !3dLAT!4dLNG in URL or HTML
+  const pinMatch = (url + ' ' + html).match(/!3d(-?\d+\.\d+)!4d(-?\d+\.\d+)/);
+  if (pinMatch) {
+    return { lat: parseFloat(pinMatch[1]), lng: parseFloat(pinMatch[2]) };
+  }
+
+  // 2. Check viewport center coordinates /@lat,lng
+  const centerMatch = (url + ' ' + html).match(/@(-?\d+\.\d+),(-?\d+\.\d+)/);
+  if (centerMatch) {
+    return { lat: parseFloat(centerMatch[1]), lng: parseFloat(centerMatch[2]) };
+  }
+
+  // 3. Check [lat, lng] array structure in Google Maps HTML
+  const coordArrayMatch = html.match(/\[null,null,(-?\d+\.\d+),(-?\d+\.\d+)\]/);
+  if (coordArrayMatch) {
+    return { lat: parseFloat(coordArrayMatch[1]), lng: parseFloat(coordArrayMatch[2]) };
+  }
+
+  return null;
+}
+
+// Reverse geocode (lat, lng) to "Area, City" using OpenStreetMap & BigDataCloud
+async function reverseGeocodeCoordinates(lat: number, lng: number): Promise<string | null> {
+  // 1. Try Nominatim (high precision neighborhood / suburb + city)
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 2500);
+    const res = await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json`, {
+      headers: { 'User-Agent': 'AgencyCRM-LeadBot/1.0' },
+      signal: controller.signal,
+    });
+    clearTimeout(timeout);
+    if (res.ok) {
+      const data = await res.json();
+      const addr = data.address || {};
+      const suburb = addr.suburb || addr.neighbourhood || addr.residential || addr.commercial || addr.subdistrict || '';
+      const city = addr.city || addr.town || addr.municipality || addr.state_district || addr.county || '';
+      if (suburb && city && suburb.toLowerCase() !== city.toLowerCase()) {
+        return cleanLocationString(`${suburb}, ${city}`);
+      }
+      if (city) return cleanLocationString(city);
+    }
+  } catch {}
+
+  // 2. Fallback to BigDataCloud
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 2500);
+    const res = await fetch(`https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${lat}&longitude=${lng}&localityLanguage=en`, {
+      signal: controller.signal,
+    });
+    clearTimeout(timeout);
+    if (res.ok) {
+      const data = await res.json();
+      const city = data.city || data.locality || '';
+      const locality = data.locality && data.locality !== city ? data.locality : '';
+      if (locality && city) return cleanLocationString(`${locality}, ${city}`);
+      if (city) return cleanLocationString(city);
+    }
+  } catch {}
+
+  return null;
+}
+
 // Extract clean emails
 function extractCleanEmails(html: string): string[] {
   const matches = html.match(EMAIL_REGEX) || [];
@@ -284,38 +352,53 @@ function extractCleanEmails(html: string): string[] {
   return Array.from(new Set(cleaned));
 }
 
+// Known aggregator & directory PBX numbers to exclude
+const AGGREGATOR_PHONES = new Set([
+  '09644211212', '9644211212', '08888888888', '8888888888', '02261234567', '02228888888',
+  '01140000000', '18002000000', '18001088888', '18002660000', '08048000000', '08047000000'
+]);
+
 // Extract phone numbers (handles leading zero formats like 084120 14757)
 function extractPhoneNumbers(html: string): { primary?: string; alternate?: string } {
   const candidates: string[] = [];
 
-  // 1. Mobile with leading 0 (e.g. 084120 14757)
+  // 1. Explicit Indian Mobile with +91 (highest confidence)
+  for (const m of html.matchAll(/\+91[\s-]?[6789]\d{4}[\s-]?\d{5}\b/g)) {
+    const digits = m[0].replace(/\D/g, '');
+    if (digits.length === 12 && digits.startsWith('91')) {
+      const clean = `+${digits}`;
+      if (!candidates.includes(clean)) candidates.push(clean);
+    }
+  }
+
+  // 2. Mobile with leading 0 (e.g. 084120 14757)
   for (const m of html.matchAll(IN_MOBILE_ZERO_REGEX)) {
     const digits = m[0].replace(/\D/g, '');
     if (digits.length === 11 && digits.startsWith('0')) {
       const clean = cleanIndianMobile(digits);
-      if (!candidates.includes(clean)) candidates.push(clean);
+      if (!candidates.includes(clean) && !AGGREGATOR_PHONES.has(digits)) candidates.push(clean);
     }
   }
 
-  // 2. Indian Mobile (+91 or standard 10 digits starting 6,7,8,9)
+  // 3. Indian Mobile (standard 10 digits starting 6,7,8,9)
   for (const m of html.matchAll(IN_MOBILE_REGEX)) {
     const digits = m[0].replace(/\D/g, '');
-    if (digits.length === 10 || (digits.length === 12 && digits.startsWith('91'))) {
-      const clean = digits.length === 12 ? `+${digits}` : cleanIndianMobile(digits);
-      if (!candidates.includes(clean)) candidates.push(clean);
+    if (digits.length === 10) {
+      const clean = cleanIndianMobile(digits);
+      if (!candidates.includes(clean) && !AGGREGATOR_PHONES.has(digits)) candidates.push(clean);
     }
   }
 
-  // 3. Indian Landlines with STD code (e.g. 022-26401234, 020-24361234)
+  // 4. Indian Landlines with STD code (e.g. 022-26401234, 020-24361234)
   for (const m of html.matchAll(IN_LANDLINE_REGEX)) {
     const digits = m[0].replace(/\D/g, '');
     if (digits.length >= 10 && digits.length <= 11) {
       const std = m[0].trim();
-      if (!candidates.includes(std)) candidates.push(std);
+      if (!candidates.includes(std) && !AGGREGATOR_PHONES.has(digits)) candidates.push(std);
     }
   }
 
-  // 4. US & UK Phone Numbers
+  // 5. US & UK Phone Numbers
   for (const m of html.matchAll(US_PHONE_REGEX)) {
     const val = m[0].trim();
     if (!candidates.includes(val)) candidates.push(val);
@@ -327,7 +410,14 @@ function extractPhoneNumbers(html: string): { primary?: string; alternate?: stri
 
   const valid = candidates.filter((p) => {
     const d = p.replace(/\D/g, '');
-    return d !== '1234567890' && d !== '0000000000' && !p.includes('2024') && !p.includes('2025') && !p.includes('2026');
+    return (
+      d !== '1234567890' &&
+      d !== '0000000000' &&
+      !AGGREGATOR_PHONES.has(d) &&
+      !p.includes('2024') &&
+      !p.includes('2025') &&
+      !p.includes('2026')
+    );
   });
 
   return {
@@ -348,15 +438,17 @@ function isRelevantInstagramHandle(handle: string, companyName: string): boolean
   const cParts = companyName.toLowerCase().replace(/[^a-z0-9\s]/g, '').split(/\s+/).filter((p) => p.length > 2);
   
   if (cParts.length <= 1) {
-    return h.includes(cParts[0] || '');
+    return h === (cParts[0] || '') || h.startsWith(cParts[0] || '');
   }
 
   // Multi-word company (e.g. Snehal Pest Control or Salon Muah)
+  // Must match at least 2 distinct words from the company name (e.g. "snehal" + "pest")
   const matchedParts = cParts.filter((p) => h.includes(p));
   if (matchedParts.length >= 2) return true;
 
+  // Or full joined name (e.g. "snehalpestcontrol" in "@snehalpestcontrol_pune")
   const joined = cParts.join('');
-  if (h.includes(joined) || joined.includes(h)) return true;
+  if (h.includes(joined)) return true;
 
   return false;
 }
@@ -418,20 +510,7 @@ function extractFollowers(html: string): string | undefined {
 function extractContactPerson(html: string, companyName: string): string | undefined {
   if (!html) return undefined;
 
-  // 1. LinkedIn profile slug pattern (linkedin.com/in/first-last)
-  const liSlugMatch = html.match(/linkedin\.com\/in\/([a-zA-Z0-9_-]+)/i);
-  if (liSlugMatch && liSlugMatch[1]) {
-    const slug = liSlugMatch[1].replace(/-\d+[a-z0-9]*$/i, '').replace(/[-_]/g, ' ');
-    const words = slug.split(' ').map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase());
-    if (words.length >= 2 && words.length <= 3) {
-      const potentialName = words.join(' ');
-      if (!isJobTitleOrInvalidName(potentialName, companyName)) {
-        return potentialName;
-      }
-    }
-  }
-
-  // 2. Strict LinkedIn Title pattern: Name - Owner/Founder/CEO | LinkedIn
+  // 1. Strict LinkedIn Title pattern: Name - Owner/Founder/CEO | LinkedIn
   const liTitleMatch = html.match(/([A-Z][a-z]+(?:\s+[A-Z]['’]?[A-Za-z]+){1,2})\s*[-–—|]\s*(?:Owner|Founder|Co-Founder|Proprietor|Managing Director|CEO|MD)\b[^-–—|]*\|\s*LinkedIn/i);
   if (liTitleMatch && liTitleMatch[1]) {
     const name = liTitleMatch[1].trim();
@@ -440,7 +519,7 @@ function extractContactPerson(html: string, companyName: string): string | undef
     }
   }
 
-  // 3. Explicit Director/Founder/Owner pattern: "Founder: First Last"
+  // 2. Explicit Director/Founder/Owner pattern: "Founder: First Last"
   const dirMatch = html.match(/\b(?:Director|Directors|Founder|Founders|Owner|Owners|Proprietor|Proprietors)\b\s*[:–-]?\s*([A-Z][a-z]+(?:\s+and\s+[A-Z][a-z]+)?(?:\s+[A-Z]['’]?[A-Za-z]+)?)/i);
   if (dirMatch && dirMatch[1]) {
     const name = dirMatch[1].replace(/\s+\band\b\s+/gi, ' & ').trim();
@@ -680,6 +759,7 @@ export async function POST(req: NextRequest) {
         data.suggestedServices = ['AI Voice Agent'];
       }
 
+      data.confidenceFields = Array.from(new Set(data.confidenceFields));
       EXTRACTION_CACHE.set(cacheKey, { data, timestamp: Date.now() });
       return NextResponse.json({ success: true, data });
     }
@@ -839,6 +919,31 @@ export async function POST(req: NextRequest) {
         }
       }
 
+      // 6. Reverse Geocode exact GPS Coordinates from Google Maps URL / HTML (e.g. Pune, Bandra Mumbai)
+      if (!data.location) {
+        const coords = extractCoordinatesFromMapsUrl(resolvedUrl, mapsHtml);
+        if (coords) {
+          const revLoc = await reverseGeocodeCoordinates(coords.lat, coords.lng);
+          if (revLoc) {
+            data.location = revLoc;
+            if (!data.confidenceFields.includes('Location')) data.confidenceFields.push('Location');
+          }
+        }
+      }
+
+      // Direct phone extraction from Google Maps page if available
+      if (mapsHtml && !data.phone) {
+        const { primary, alternate } = extractPhoneNumbers(mapsHtml);
+        if (primary) {
+          data.phone = primary;
+          data.confidenceFields.push('Primary Phone');
+        }
+        if (alternate) {
+          data.alternatePhone = alternate;
+          data.confidenceFields.push('Alternate Phone');
+        }
+      }
+
       // Final clean of companyName
       if (data.companyName) {
         data.companyName = cleanCompanyName(data.companyName);
@@ -846,7 +951,7 @@ export async function POST(req: NextRequest) {
 
       // If we have the company name, execute parallel multi-search enrichment
       if (data.companyName) {
-        data.mapsUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(data.companyName)}`;
+        data.mapsUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(data.companyName + (data.location ? ' ' + data.location : ''))}`;
 
         const searchHtml = await multiSearchEnrichment([
           `${data.companyName} ${data.location || ''} phone contact Justdial`,
@@ -854,45 +959,46 @@ export async function POST(req: NextRequest) {
           `${data.companyName} ${data.location || ''} instagram`,
         ]);
 
-        // 1. Instagram Handle & Followers
+        // 1. Instagram Handle & Followers (strictly validated against company keywords)
         const igHandle = extractInstagramHandle(searchHtml, data.companyName);
         if (igHandle) {
           data.instagram = igHandle;
           data.confidenceFields.push('Instagram Handle');
+
+          const followersCount = extractFollowers(searchHtml);
+          if (followersCount) {
+            data.followers = followersCount;
+            data.confidenceFields.push(followersCount);
+          }
         }
 
-        const followersCount = extractFollowers(searchHtml);
-        if (followersCount) {
-          data.followers = followersCount;
-          data.confidenceFields.push(followersCount);
-          if (!data.instagram) {
-            const fallbackIg = extractInstagramHandle(searchHtml, data.companyName);
-            if (fallbackIg) {
-              data.instagram = fallbackIg;
-              data.confidenceFields.push('Instagram Handle');
+        // 2. LinkedIn Profile / Company (strictly validated)
+        const cParts = data.companyName.toLowerCase().replace(/[^a-z0-9\s]/g, '').split(/\s+/).filter((p) => p.length > 2);
+        const liMatches = [...searchHtml.matchAll(/(?:https?:\/\/)?(?:[a-z]{2,3}\.)?linkedin\.com\/(?:in|company)\/([a-zA-Z0-9_-]+)/gi)];
+        for (const m of liMatches) {
+          const full = m[0].startsWith('http') ? m[0] : `https://${m[0]}`;
+          const slug = m[1].toLowerCase().replace(/[-_]/g, '');
+          if (!full.includes('/pulse/') && !full.includes('/posts/') && !full.includes('/jobs/')) {
+            const isRelevantLi = cParts.some((p) => slug.includes(p)) && (cParts.length <= 1 || cParts.filter((p) => slug.includes(p)).length >= 2 || slug.includes(cParts.join('')));
+            if (isRelevantLi) {
+              data.linkedin = full;
+              data.confidenceFields.push('LinkedIn Profile');
+              break;
             }
           }
         }
 
-        // 2. LinkedIn Profile / Company
-        const liMatches = [...searchHtml.matchAll(/(?:https?:\/\/)?(?:[a-z]{2,3}\.)?linkedin\.com\/(?:in|company)\/([a-zA-Z0-9_-]+)/gi)];
-        for (const m of liMatches) {
-          const full = m[0].startsWith('http') ? m[0] : `https://${m[0]}`;
-          if (!full.includes('/pulse/') && !full.includes('/posts/') && !full.includes('/jobs/')) {
-            data.linkedin = full;
-            data.confidenceFields.push('LinkedIn Profile');
-            break;
-          }
-        }
-
-        // 3. Facebook Page
+        // 3. Facebook Page (strictly validated)
         const fbMatches = [...searchHtml.matchAll(/(?:https?:\/\/)?(?:www\.)?facebook\.com\/(?:p\/|people\/|pages\/)?([a-zA-Z0-9.\-_]{3,50})/gi)];
         for (const m of fbMatches) {
-          const id = m[1].toLowerCase();
-          if (!['login', 'share', 'help', 'privacy', 'terms', 'recover', 'dialog', 'profile.php', 'sharer.php'].includes(id)) {
-            data.facebook = `https://www.facebook.com/${m[1]}`;
-            data.confidenceFields.push('Facebook Page');
-            break;
+          const slug = m[1].toLowerCase().replace(/[-_]/g, '');
+          if (!['login', 'share', 'help', 'privacy', 'terms', 'recover', 'dialog', 'profile.php', 'sharer.php'].includes(slug)) {
+            const isRelevantFb = cParts.some((p) => slug.includes(p)) && (cParts.length <= 1 || cParts.filter((p) => slug.includes(p)).length >= 2 || slug.includes(cParts.join('')));
+            if (isRelevantFb) {
+              data.facebook = `https://www.facebook.com/${m[1]}`;
+              data.confidenceFields.push('Facebook Page');
+              break;
+            }
           }
         }
 
@@ -1051,6 +1157,9 @@ export async function POST(req: NextRequest) {
         data.suggestedServices = ['AI Voice Agent'];
       }
 
+      // Deduplicate confidence badges
+      data.confidenceFields = Array.from(new Set(data.confidenceFields));
+
       // Store in memory cache
       EXTRACTION_CACHE.set(cacheKey, { data, timestamp: Date.now() });
       return NextResponse.json({ success: true, data });
@@ -1116,6 +1225,9 @@ export async function POST(req: NextRequest) {
       data.suggestedService = 'AI Voice Agent';
       data.suggestedServices = ['AI Voice Agent'];
     }
+
+    // Deduplicate confidence badges
+    data.confidenceFields = Array.from(new Set(data.confidenceFields));
 
     EXTRACTION_CACHE.set(cacheKey, { data, timestamp: Date.now() });
     return NextResponse.json({ success: true, data });

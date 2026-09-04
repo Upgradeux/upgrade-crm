@@ -59,6 +59,13 @@ const BROWSER_HEADERS = {
   'Upgrade-Insecure-Requests': '1',
 };
 
+// Googlebot headers for Google Maps SSR pre-rendered HTML (contains direct phone & address)
+const GOOGLEBOT_HEADERS = {
+  'User-Agent': 'Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)',
+  'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+  'Accept-Language': 'en-US,en;q=0.9',
+};
+
 // Comprehensive directory list to NEVER mistake for a company's actual website
 const DIRECTORY_DOMAINS = [
   'google.', 'instagram.', 'facebook.', 'justdial.', 'cybo.', 'youtube.', 'linkedin.', 'twitter.', 'x.com', 'yelp.',
@@ -133,7 +140,8 @@ function isJobTitleOrInvalidName(name: string, companyName = ''): boolean {
 }
 
 const CITIES = [
-  'Mumbai', 'Navi Mumbai', 'Thane', 'Bandra', 'Andheri', 'Juhu', 'Worli', 'Colaba', 'Borivali', 'Powai', 'Dadar', 'Khar', 'Santacruz', 'Goregaon', 'Malad',
+  'Mumbai', 'Navi Mumbai', 'Thane', 'Panvel', 'Kharghar', 'Raigad', 'Kalyan', 'Dombivli', 'Vasai', 'Virar', 'Mira Road', 'Bhiwandi',
+  'Bandra', 'Andheri', 'Juhu', 'Worli', 'Colaba', 'Borivali', 'Powai', 'Dadar', 'Khar', 'Santacruz', 'Goregaon', 'Malad',
   'Delhi', 'New Delhi', 'Gurgaon', 'Gurugram', 'Noida', 'Faridabad', 'Ghaziabad',
   'Bengaluru', 'Bangalore', 'Whitefield', 'Koramangala', 'Indiranagar', 'HSR Layout', 'Jayanagar',
   'Hyderabad', 'Secunderabad', 'HITEC City', 'Gachibowli', 'Jubilee Hills', 'Banjara Hills',
@@ -160,8 +168,11 @@ function isLikelyCompanyWebsite(rawUrl: string, companyName: string): boolean {
   const brandKeywords = nameParts.filter((p) => !GENERIC_INDUSTRY_WORDS.has(p));
 
   // If there are distinctive brand keywords (e.g. "cockroach", "muah", "ayush"), at least one must match the domain
+  // Require stronger match: if brand has 2+ keywords, at least 2 must match the domain
   if (brandKeywords.length > 0) {
-    return brandKeywords.some((part) => domain.includes(part));
+    const matchCount = brandKeywords.filter((part) => domain.includes(part)).length;
+    if (brandKeywords.length >= 2) return matchCount >= 2;
+    return matchCount >= 1 && brandKeywords[0].length >= 4; // Single brand keyword must be 4+ chars
   }
 
   // Purely generic search query (e.g. "Pest Control Services"): require at least 2 distinct word matches
@@ -195,13 +206,13 @@ function decodeSearchUrl(raw: string): string {
   }
 }
 
-async function safeFetchHtml(url: string, timeoutMs = 4500): Promise<{ html: string; finalUrl: string } | null> {
+async function safeFetchHtml(url: string, timeoutMs = 4500, customHeaders?: Record<string, string>): Promise<{ html: string; finalUrl: string } | null> {
   try {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), timeoutMs);
 
     const res = await fetch(url, {
-      headers: BROWSER_HEADERS,
+      headers: customHeaders || BROWSER_HEADERS,
       redirect: 'follow',
       signal: controller.signal,
     });
@@ -256,6 +267,8 @@ function cleanLocationString(raw: string): string {
   // Ensure City is attached if area is recognized
   if (/Bandra|Borivali|Andheri|Khar|Juhu|Worli|Powai/i.test(clean) && !/Mumbai/i.test(clean)) {
     clean = `${clean}, Mumbai`;
+  } else if (/Panvel|Kharghar|Vashi|Nerul|Belapur|Airoli|Ghansoli/i.test(clean) && !/Mumbai|Navi Mumbai/i.test(clean)) {
+    clean = `${clean}, Navi Mumbai`;
   } else if (/Katraj|Swargate|Kothrud|Baner|Hinjewadi|Wakad|Maharshi Nagar|Market Yard|Chakan|Satara Road/i.test(clean) && !/Pune/i.test(clean)) {
     clean = `${clean}, Pune`;
   } else if (/Koramangala|Indiranagar|Whitefield|HSR/i.test(clean) && !/Bangalore|Bengaluru/i.test(clean)) {
@@ -420,15 +433,61 @@ function extractPhoneNumbers(html: string): { primary?: string; alternate?: stri
     );
   });
 
+  // Deduplicate numbers that are the same after normalization (e.g. +917666295666 vs 7666295666)
+  const seen = new Set<string>();
+  const deduped = valid.filter((p) => {
+    const digits = p.replace(/\D/g, '');
+    // Normalize to last 10 digits for comparison
+    const normalized = digits.length > 10 ? digits.slice(-10) : digits;
+    if (seen.has(normalized)) return false;
+    seen.add(normalized);
+    return true;
+  });
+
   return {
-    primary: valid[0],
-    alternate: valid[1],
+    primary: deduped[0],
+    alternate: deduped[1],
   };
 }
 
+// Context-aware phone extraction: only extract phones from search HTML snippets
+// that appear NEAR the business name. This prevents picking up random phone numbers
+// from other businesses, ads, or unrelated search results on the same page.
+function extractPhonesFromContext(html: string, businessName: string): { primary?: string; alternate?: string } {
+  if (!html || !businessName) return {};
+
+  // Get keywords from business name to find relevant context windows
+  const keywords = businessName.toLowerCase()
+    .replace(/[^a-z0-9\s]/g, '')
+    .split(/\s+/)
+    .filter((p) => p.length > 2);
+
+  if (keywords.length === 0) return extractPhoneNumbers(html);
+
+  // Build regex to match ANY keyword (finds snippets mentioning the business)
+  const escapedKeywords = keywords.map((k) => k.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+  const keywordPattern = new RegExp(escapedKeywords.join('|'), 'gi');
+
+  // Collect ~600 char context windows around each keyword occurrence
+  const contextChunks = new Set<string>();
+  let match;
+  while ((match = keywordPattern.exec(html)) !== null) {
+    const start = Math.max(0, match.index - 200);
+    const end = Math.min(html.length, match.index + 400);
+    contextChunks.add(html.substring(start, end));
+  }
+
+  if (contextChunks.size === 0) return {};
+
+  // Extract phones only from these business-relevant snippets
+  const contextHtml = Array.from(contextChunks).join('\n');
+  return extractPhoneNumbers(contextHtml);
+}
+
 function cleanIndianMobile(digits: string): string {
-  if (digits.length === 10) return digits;
-  if (digits.length === 11 && digits.startsWith('0')) return digits.slice(1);
+  if (digits.length === 10) return `+91${digits}`;
+  if (digits.length === 11 && digits.startsWith('0')) return `+91${digits.slice(1)}`;
+  if (digits.length === 12 && digits.startsWith('91')) return `+${digits}`;
   return digits;
 }
 
@@ -716,7 +775,7 @@ export async function POST(req: NextRequest) {
             data.confidenceFields.push(f);
           }
         }
-        const { primary, alternate } = extractPhoneNumbers(searchHtml);
+        const { primary, alternate } = extractPhonesFromContext(searchHtml, data.companyName || username);
         if (!data.phone && primary) {
           data.phone = primary;
           data.confidenceFields.push('Phone');
@@ -783,12 +842,71 @@ export async function POST(req: NextRequest) {
       data.mapsUrl = targetUrl;
       data.confidenceFields.push('Google Maps Link');
 
-      const fetched = await safeFetchHtml(targetUrl, 6000);
+      // Fetch with Googlebot headers to get Google Maps Server-Side Rendered (SSR) HTML
+      // Google Maps returns a clean, structured SSR page to Googlebot containing:
+      // - Business name
+      // - Full address in <div class="ueGHKf">
+      // - Exact verified phone number shown on the Maps profile in <div class="ueGHKf">
+      let fetched = await safeFetchHtml(targetUrl, 6000, GOOGLEBOT_HEADERS);
       let resolvedUrl = targetUrl;
-      const mapsHtml = fetched?.html || '';
+      let mapsHtml = fetched?.html || '';
 
       if (fetched) {
         resolvedUrl = fetched.finalUrl || targetUrl;
+      }
+
+      // Fallback to desktop headers if bot fetch failed or was blocked
+      if (!mapsHtml) {
+        fetched = await safeFetchHtml(targetUrl, 6000);
+        if (fetched) {
+          resolvedUrl = fetched.finalUrl || resolvedUrl;
+          mapsHtml = fetched.html || '';
+        }
+      }
+
+      // Handle share.google links: they redirect to a Google Search results page,
+      // NOT a Maps place page. Detect this and re-fetch the actual Maps place.
+      const isSearchRedirect = resolvedUrl.includes('google.com/search') ||
+        (mapsHtml.includes('<title>Google Search</title>') && !resolvedUrl.includes('/maps/'));
+      if (isSearchRedirect && !resolvedUrl.includes('/maps/')) {
+        // Try to extract the query/place from the search URL parameters
+        try {
+          const searchUrl = new URL(resolvedUrl);
+          const searchQuery = searchUrl.searchParams.get('q') || searchUrl.searchParams.get('query') || '';
+          if (searchQuery) {
+            // Re-fetch as a proper Maps search with Googlebot headers
+            const mapsSearchUrl = `https://www.google.com/maps/search/${encodeURIComponent(searchQuery)}`;
+            const mapsFetched = await safeFetchHtml(mapsSearchUrl, 6000, GOOGLEBOT_HEADERS);
+            if (mapsFetched) {
+              resolvedUrl = mapsFetched.finalUrl || mapsSearchUrl;
+              mapsHtml = mapsFetched.html || mapsHtml;
+            }
+          }
+        } catch {}
+      }
+
+      // Direct extraction from Google Maps SSR divs (<div class="ueGHKf">)
+      if (mapsHtml) {
+        const ssrDivs = [...mapsHtml.matchAll(/<div class="ueGHKf">([^<]+)<\/div>/g)].map((m) => decodeHtmlEntities(m[1].trim()));
+        for (const divText of ssrDivs) {
+          // Check for phone number
+          if (!data.phone) {
+            const { primary } = extractPhoneNumbers(divText);
+            if (primary) {
+              data.phone = primary;
+              if (!data.confidenceFields.includes('Primary Phone')) data.confidenceFields.push('Primary Phone');
+              continue;
+            }
+          }
+          // Check for address / location
+          if (!data.location && divText.length > 5 && !divText.toLowerCase().includes('google maps') && !divText.toLowerCase().includes('view details')) {
+            const loc = cleanLocationString(divText);
+            if (loc) {
+              data.location = loc;
+              if (!data.confidenceFields.includes('Location')) data.confidenceFields.push('Location');
+            }
+          }
+        }
       }
 
       // 1. Extract from /maps/place/<Name, Address>/
@@ -932,8 +1050,22 @@ export async function POST(req: NextRequest) {
       }
 
       // Direct phone extraction from Google Maps page if available
+      // CRITICAL: Strip protobuf/URL encoded data first — Google Maps HTML contains
+      // internal parameters like "!1d120699.79705815585" that match Indian mobile regex
       if (mapsHtml && !data.phone) {
-        const { primary, alternate } = extractPhoneNumbers(mapsHtml);
+        let cleanedMapsHtml = mapsHtml
+          // Remove all script blocks (contain protobuf, coordinates, internal IDs)
+          .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
+          // Remove URL-encoded protobuf parameters (!1d, !2d, !3d etc)
+          .replace(/!\d+[a-z][^!"'\s<>]*/gi, '')
+          // Remove base64-encoded data blocks
+          .replace(/[A-Za-z0-9+/]{50,}={0,2}/g, '')
+          // Remove data: URIs
+          .replace(/data:[^\s"'<>]+/gi, '')
+          // Remove inline style/link blocks
+          .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
+          .replace(/<link[^>]*>/gi, '');
+        const { primary, alternate } = extractPhoneNumbers(cleanedMapsHtml);
         if (primary) {
           data.phone = primary;
           data.confidenceFields.push('Primary Phone');
@@ -953,11 +1085,18 @@ export async function POST(req: NextRequest) {
       if (data.companyName) {
         data.mapsUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(data.companyName + (data.location ? ' ' + data.location : ''))}`;
 
-        const searchHtml = await multiSearchEnrichment([
-          `${data.companyName} ${data.location || ''} phone contact Justdial`,
-          `${data.companyName} ${data.location || ''} phone contact address`,
-          `${data.companyName} ${data.location || ''} instagram`,
+        // Parallel fetch: 4 search engines × 2 queries + JustDial direct search
+        const jdQuery = encodeURIComponent(`${data.companyName} ${data.location || ''}`);
+        const [searchHtml, jdResult] = await Promise.all([
+          multiSearchEnrichment([
+            `${data.companyName} ${data.location || ''} phone contact address`,
+            `${data.companyName} ${data.location || ''} instagram website email`,
+          ]),
+          safeFetchHtml(`https://www.justdial.com/search?q=${jdQuery}`, 4000),
         ]);
+
+        // Combine search engine results + JustDial for richer extraction
+        const allSearchHtml = searchHtml + (jdResult?.html ? '\n' + jdResult.html : '');
 
         // 1. Instagram Handle & Followers (strictly validated against company keywords)
         const igHandle = extractInstagramHandle(searchHtml, data.companyName);
@@ -1002,19 +1141,25 @@ export async function POST(req: NextRequest) {
           }
         }
 
-        // 4. Primary & Alternate Phone Numbers from Search
-        const { primary, alternate } = extractPhoneNumbers(searchHtml);
-        if (primary) {
-          data.phone = primary;
-          data.confidenceFields.push('Primary Phone');
-        }
-        if (alternate) {
-          data.alternatePhone = alternate;
-          data.confidenceFields.push('Alternate Phone');
+        // 4. Primary & Alternate Phone Numbers from Search (only if NOT already found from Maps)
+        // Uses context-aware extraction: only picks phones from snippets mentioning the business
+        if (!data.phone || !data.alternatePhone) {
+          const { primary, alternate } = extractPhonesFromContext(allSearchHtml, data.companyName);
+          if (!data.phone && primary) {
+            data.phone = primary;
+            data.confidenceFields.push('Primary Phone');
+          } else if (data.phone && !data.alternatePhone && primary && primary !== data.phone) {
+            data.alternatePhone = primary;
+            data.confidenceFields.push('Alternate Phone');
+          }
+          if (!data.alternatePhone && alternate && alternate !== data.phone) {
+            data.alternatePhone = alternate;
+            data.confidenceFields.push('Alternate Phone');
+          }
         }
 
         // 5. Contact Person / Owner (Strict zero-hallucination validation)
-        const owner = extractContactPerson(searchHtml, data.companyName);
+        const owner = extractContactPerson(allSearchHtml, data.companyName);
         if (owner) {
           data.contactName = owner;
           data.confidenceFields.push(`Owner: ${owner}`);
@@ -1022,7 +1167,7 @@ export async function POST(req: NextRequest) {
 
         // 6. Location / Address (if not found from Google Maps)
         if (!data.location) {
-          const pinMatch = searchHtml.match(/(?:📍|📌)\s*([A-Za-z0-9\s,–-]+?)(?=[|•\n\r"&<]|$)/i);
+          const pinMatch = allSearchHtml.match(/(?:📍|📌)\s*([A-Za-z0-9\s,–-]+?)(?=[|•\n\r"&<]|$)/i);
           if (pinMatch && pinMatch[1]) {
             const loc = cleanLocationString(pinMatch[1]);
             if (loc) {
@@ -1032,7 +1177,7 @@ export async function POST(req: NextRequest) {
           } else {
             for (const city of CITIES) {
               const cityRegex = new RegExp(`(?:in|at|near|location|address)\\s+([A-Za-z0-9\\s,–-]*${city}[A-Za-z0-9\\s,–-]*)`, 'i');
-              const m = searchHtml.match(cityRegex);
+              const m = allSearchHtml.match(cityRegex);
               if (m && m[1]) {
                 const parts = m[1].replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').split(/[,–|•]/).map((p) => p.trim()).filter(Boolean);
                 if (parts.length > 0) {
@@ -1048,23 +1193,39 @@ export async function POST(req: NextRequest) {
           }
         }
 
-        // 7. Rating & Review Count (Ignores 0.0 unrated entries)
-        const ratingMatch =
-          searchHtml.match(/Rated\s*([1-5](?:\.\d)?)\s*based on\s*([1-9]\d*)\s*Customer Reviews/i) ||
-          searchHtml.match(/([1-5]\.\d)\s*(?:\/5|stars|★|\s*rating)[^\d]*([1-9]\d*)\s*(?:reviews|votes|ratings)/i) ||
-          searchHtml.match(/Rating:\s*([1-5]\.\d)[^\d]*([1-9]\d*)\s*reviews/i) ||
-          searchHtml.match(/Rated\s*([1-5]\.\d)\/5[^\d]*([1-9]\d*)\s*Ratings/i) ||
-          searchHtml.match(/([1-5]\.\d)\s*(?:\d\.\d)?\s*\(([1-9]\d*)\s*(?:ratings|reviews|votes)\)/i) ||
-          searchHtml.match(/([1-5]\.\d)\s*(?:\/5|★|stars)/i);
+        // 7. Rating & Review Count — context-aware: only from snippets mentioning business name
+        // This prevents picking up ratings from other businesses on the same search page
+        {
+          // Build context-aware search HTML containing only snippets near business name
+          const ratingKeywords = data.companyName.toLowerCase().replace(/[^a-z0-9\s]/g, '').split(/\s+/).filter((p) => p.length > 2);
+          const ratingEscaped = ratingKeywords.map((k) => k.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+          const ratingPattern = new RegExp(ratingEscaped.join('|'), 'gi');
+          const ratingContextChunks = new Set<string>();
+          let rm;
+          while ((rm = ratingPattern.exec(allSearchHtml)) !== null) {
+            const start = Math.max(0, rm.index - 150);
+            const end = Math.min(allSearchHtml.length, rm.index + 300);
+            ratingContextChunks.add(allSearchHtml.substring(start, end));
+          }
+          const ratingContextHtml = Array.from(ratingContextChunks).join('\n');
 
-        if (ratingMatch && parseFloat(ratingMatch[1]) > 0) {
-          data.rating = parseFloat(ratingMatch[1]);
-          if (ratingMatch[2] && parseInt(ratingMatch[2], 10) > 0) {
-            data.reviewCount = parseInt(ratingMatch[2], 10);
-            data.confidenceFields.push(`Rating: ${data.rating} (${data.reviewCount} Reviews)`);
-            data.notes = `Rated ${data.rating}/5.0 (${data.reviewCount} Reviews)`;
-          } else {
-            data.confidenceFields.push(`Rating: ${data.rating}`);
+          const ratingMatch =
+            ratingContextHtml.match(/Rated\s*([1-5](?:\.\d)?)\s*based on\s*([1-9]\d*)\s*Customer Reviews/i) ||
+            ratingContextHtml.match(/([1-5]\.\d)\s*(?:\/5|stars|★|\s*rating)[^\d]*([1-9]\d*)\s*(?:reviews|votes|ratings)/i) ||
+            ratingContextHtml.match(/Rating:\s*([1-5]\.\d)[^\d]*([1-9]\d*)\s*reviews/i) ||
+            ratingContextHtml.match(/Rated\s*([1-5]\.\d)\/5[^\d]*([1-9]\d*)\s*Ratings/i) ||
+            ratingContextHtml.match(/([1-5]\.\d)\s*(?:\d\.\d)?\s*\(([1-9]\d*)\s*(?:ratings|reviews|votes)\)/i) ||
+            ratingContextHtml.match(/([1-5]\.\d)\s*(?:\/5|★|stars)/i);
+
+          if (ratingMatch && parseFloat(ratingMatch[1]) > 0) {
+            data.rating = parseFloat(ratingMatch[1]);
+            if (ratingMatch[2] && parseInt(ratingMatch[2], 10) > 0) {
+              data.reviewCount = parseInt(ratingMatch[2], 10);
+              data.confidenceFields.push(`Rating: ${data.rating} (${data.reviewCount} Reviews)`);
+              data.notes = `Rated ${data.rating}/5.0 (${data.reviewCount} Reviews)`;
+            } else {
+              data.confidenceFields.push(`Rating: ${data.rating}`);
+            }
           }
         }
 
@@ -1095,7 +1256,7 @@ export async function POST(req: NextRequest) {
         // 9. Genuine Business Website from Search
         if (!data.websiteUrl) {
           const allUrls: string[] = [];
-          for (const m of searchHtml.matchAll(/\/RU=(https?[^/]+)/gi)) {
+          for (const m of allSearchHtml.matchAll(/\/RU=(https?[^/]+)/gi)) {
             try { allUrls.push(decodeURIComponent(m[1])); } catch {}
           }
           for (const m of searchHtml.matchAll(/class="result__url"[^>]*>([^<]+)/gi)) {

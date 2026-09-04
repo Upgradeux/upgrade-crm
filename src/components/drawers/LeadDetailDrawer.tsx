@@ -30,13 +30,16 @@ import {
   IconTag,
   IconEdit,
   IconArrowsExchange,
+  IconStar,
+  IconStarFilled,
+  IconUsers,
 } from '@tabler/icons-react';
 import { Button } from '../ui/Button';
 import { Badge } from '../ui/Badge';
 import { Input } from '../ui/Input';
 import { Dropdown } from '../ui/Dropdown';
 import { LeadStatus, ServiceType, Note, LeadSource, CallOutcome, TaskPriority } from '@/types/crm';
-import { formatCurrency, formatDate, formatRelativeTime, getGoogleMapsUrl, getTwitterUrl } from '@/lib/utils';
+import { formatCurrency, formatDate, formatRelativeTime, getGoogleMapsUrl, getTwitterUrl, getInstagramUrl, getLinkedInUrl, getFacebookUrl } from '@/lib/utils';
 
 export function LeadDetailDrawer() {
   const {
@@ -490,7 +493,7 @@ export function LeadDetailDrawer() {
                 className="text-[15px] font-semibold text-[var(--t-font-color-primary)] bg-transparent outline-none border-b border-transparent hover:border-[var(--t-border-color-medium)] focus:border-[var(--t-border-color-focus)] px-0.5 truncate max-w-[220px]"
               />
               
-              {/* Quick Jump Links (Website, Google Maps, X) */}
+              {/* Quick Jump Links (Website, Google Maps, Instagram, LinkedIn, X) */}
               <div className="flex items-center gap-0.5 shrink-0">
                 {activeLead.websiteUrl && (
                   <a
@@ -513,6 +516,30 @@ export function LeadDetailDrawer() {
                 >
                   <IconMapPin size={13} />
                 </a>
+
+                {activeLead.socials?.instagram && (
+                  <a
+                    href={getInstagramUrl(activeLead.socials.instagram)}
+                    target="_blank"
+                    rel="noreferrer"
+                    title={`Open on Instagram: ${activeLead.socials.instagram}`}
+                    className="w-[22px] h-[22px] rounded flex items-center justify-center text-[var(--t-font-color-tertiary)] hover:text-pink-500 hover:bg-pink-500/10 transition-colors"
+                  >
+                    <IconBrandInstagram size={13} />
+                  </a>
+                )}
+
+                {activeLead.socials?.linkedin && (
+                  <a
+                    href={getLinkedInUrl(activeLead.socials.linkedin)}
+                    target="_blank"
+                    rel="noreferrer"
+                    title={`Open on LinkedIn: ${activeLead.socials.linkedin}`}
+                    className="w-[22px] h-[22px] rounded flex items-center justify-center text-[var(--t-font-color-tertiary)] hover:text-sky-500 hover:bg-sky-500/10 transition-colors"
+                  >
+                    <IconBrandLinkedin size={13} />
+                  </a>
+                )}
 
                 {activeLead.socials?.twitter && (
                   <a
@@ -537,6 +564,41 @@ export function LeadDetailDrawer() {
               >
                 Convert to Won
               </Button>
+            )}
+          </div>
+
+          {/* Twenty-Style Metadata Chips (Rating, Followers, Location, Source) */}
+          <div className="flex items-center gap-1.5 flex-wrap pt-0.5 text-[11px]">
+            {activeLead.location && (
+              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-[4px] bg-[var(--t-background-primary)] border border-[var(--t-border-color-light)] text-[var(--t-font-color-secondary)]">
+                <IconMapPin size={11} className="text-emerald-500 shrink-0" />
+                <span className="truncate max-w-[170px]">{activeLead.location}</span>
+              </span>
+            )}
+
+            {(activeLead.rating !== undefined && activeLead.rating !== null && activeLead.rating > 0) && (
+              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-[4px] bg-amber-500/10 border border-amber-500/20 text-amber-400 font-mono font-medium">
+                <IconStarFilled size={11} className="text-amber-400 shrink-0" />
+                <span>{activeLead.rating.toFixed(1)}</span>
+                {activeLead.reviewCount && <span className="text-[10px] text-amber-400/80">({activeLead.reviewCount})</span>}
+              </span>
+            )}
+
+            {activeLead.followers && (
+              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-[4px] bg-pink-500/10 border border-pink-500/20 text-pink-400 font-mono font-medium">
+                <IconBrandInstagram size={11} className="shrink-0" />
+                <span>{activeLead.followers}</span>
+              </span>
+            )}
+
+            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-[4px] bg-[var(--t-background-primary)] border border-[var(--t-border-color-light)] text-[var(--t-font-color-tertiary)]">
+              <span>{activeLead.source}</span>
+            </span>
+
+            {activeLead.industry && activeLead.industry !== 'All Spaces' && (
+              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-[4px] bg-[var(--t-background-primary)] border border-[var(--t-border-color-light)] text-[var(--t-font-color-tertiary)]">
+                <span>{activeLead.industry}</span>
+              </span>
             )}
           </div>
 
@@ -954,7 +1016,7 @@ export function LeadDetailDrawer() {
                           onChange={(e) => setTaskPriority(e.target.value as TaskPriority)}
                           className="w-full h-[24px] px-1 bg-[var(--t-background-secondary)] border border-[var(--t-border-color-light)] rounded-[4px] text-[10.5px] text-[var(--t-font-color-primary)] outline-none cursor-pointer"
                         >
-                          <option value="high">🔥 High</option>
+                          <option value="high">High</option>
                           <option value="medium">Medium</option>
                           <option value="low">Low</option>
                         </select>
@@ -1249,6 +1311,66 @@ export function LeadDetailDrawer() {
                   >
                     <IconExternalLink size={11} />
                   </a>
+                </div>
+              </div>
+              {/* Online Reputation & Audience Metrics */}
+              <div className="grid grid-cols-12 items-center px-3 py-1 hover:bg-[var(--t-background-primary)] transition-colors">
+                <div className="col-span-4 flex items-center gap-1.5 text-[11px] text-[var(--t-font-color-tertiary)]">
+                  <IconStarFilled size={12} className="shrink-0 text-amber-400" />
+                  <span>Star Rating</span>
+                </div>
+                <div className="col-span-8 flex items-center gap-2">
+                  <input
+                    type="number"
+                    step="0.1"
+                    min="0"
+                    max="5"
+                    value={activeLead.rating !== undefined && activeLead.rating !== null ? activeLead.rating : ''}
+                    onChange={(e) => {
+                      const val = e.target.value === '' ? undefined : parseFloat(e.target.value);
+                      updateLead(activeLead.id, { rating: val });
+                    }}
+                    placeholder="e.g. 4.8"
+                    className="w-20 h-[24px] px-1.5 text-[11.5px] font-mono bg-transparent hover:bg-[var(--t-background-secondary)] focus:bg-[var(--t-background-primary)] border border-transparent hover:border-[var(--t-border-color-light)] focus:border-[var(--t-border-color-focus)] rounded-[3px] outline-none text-[var(--t-font-color-primary)]"
+                  />
+                  <span className="text-[10px] text-[var(--t-font-color-tertiary)]">/ 5.0</span>
+                </div>
+              </div>
+
+              {/* Property: Review Count */}
+              <div className="grid grid-cols-12 items-center px-3 py-1 hover:bg-[var(--t-background-primary)] transition-colors">
+                <div className="col-span-4 flex items-center gap-1.5 text-[11px] text-[var(--t-font-color-tertiary)]">
+                  <IconStar size={12} className="shrink-0 text-amber-400" />
+                  <span>Reviews Count</span>
+                </div>
+                <div className="col-span-8">
+                  <input
+                    type="number"
+                    value={activeLead.reviewCount !== undefined && activeLead.reviewCount !== null ? activeLead.reviewCount : ''}
+                    onChange={(e) => {
+                      const val = e.target.value === '' ? undefined : parseInt(e.target.value, 10);
+                      updateLead(activeLead.id, { reviewCount: isNaN(val as number) ? undefined : val });
+                    }}
+                    placeholder="e.g. 142"
+                    className="w-full h-[24px] px-1.5 text-[11.5px] font-mono bg-transparent hover:bg-[var(--t-background-secondary)] focus:bg-[var(--t-background-primary)] border border-transparent hover:border-[var(--t-border-color-light)] focus:border-[var(--t-border-color-focus)] rounded-[3px] outline-none text-[var(--t-font-color-primary)]"
+                  />
+                </div>
+              </div>
+
+              {/* Property: Followers */}
+              <div className="grid grid-cols-12 items-center px-3 py-1 hover:bg-[var(--t-background-primary)] transition-colors">
+                <div className="col-span-4 flex items-center gap-1.5 text-[11px] text-[var(--t-font-color-tertiary)]">
+                  <IconUsers size={12} className="shrink-0 text-pink-400" />
+                  <span>Followers Reach</span>
+                </div>
+                <div className="col-span-8">
+                  <input
+                    type="text"
+                    value={activeLead.followers || ''}
+                    onChange={(e) => updateLead(activeLead.id, { followers: e.target.value })}
+                    placeholder="e.g. 12.4K or 50K"
+                    className="w-full h-[24px] px-1.5 text-[11.5px] font-mono bg-transparent hover:bg-[var(--t-background-secondary)] focus:bg-[var(--t-background-primary)] border border-transparent hover:border-[var(--t-border-color-light)] focus:border-[var(--t-border-color-focus)] rounded-[3px] outline-none text-[var(--t-font-color-primary)]"
+                  />
                 </div>
               </div>
             </div>

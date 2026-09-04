@@ -581,7 +581,7 @@ export function TasksNotesView() {
                 className="h-6.5 px-1.5 sm:px-2 bg-[var(--t-background-primary)] border border-[var(--t-border-color-light)] text-[10.5px] text-[var(--t-font-color-secondary)] rounded-[4px] outline-none cursor-pointer"
               >
                 <option value="all">Priority: All</option>
-                <option value="high">🔥 High</option>
+                <option value="high">High</option>
                 <option value="medium">Medium</option>
                 <option value="low">Low</option>
               </select>
@@ -718,7 +718,7 @@ export function TasksNotesView() {
                 onChange={(e) => setQuickTaskPriority(e.target.value as TaskPriority)}
                 className="h-[22px] px-1.5 bg-[var(--t-background-primary)] border border-[var(--t-border-color-light)] text-[10.5px] text-[var(--t-font-color-secondary)] rounded-[3px] outline-none cursor-pointer"
               >
-                <option value="high">🔥 High</option>
+                <option value="high">High</option>
                 <option value="medium">Medium</option>
                 <option value="low">Low</option>
               </select>
@@ -1167,7 +1167,7 @@ export function TasksNotesView() {
                 <span>Live Agency Scratchpad & Call Notes (Real-time autosave)</span>
               </span>
               <span className="text-[10px] font-mono text-[var(--t-font-color-tertiary)]">
-                {scratchpadSaved ? '✓ Changes saved' : 'Autosaved'}
+                {scratchpadSaved ? 'Saved' : 'Autosaved'}
               </span>
             </div>
 
@@ -1226,7 +1226,7 @@ export function TasksNotesView() {
                 onChange={(e) => setTaskPriority(e.target.value as TaskPriority)}
                 className="w-full h-[28px] px-2 rounded-[4px] bg-[var(--t-background-primary)] border border-[var(--t-border-color-light)] text-[11.5px] text-[var(--t-font-color-primary)] outline-none cursor-pointer"
               >
-                <option value="high">🔥 High Priority</option>
+                <option value="high">High Priority</option>
                 <option value="medium">Medium Priority</option>
                 <option value="low">Low Priority</option>
               </select>

@@ -350,8 +350,9 @@ async function submitProjectInquiry(data) {
                         </span>
                       )}
                       {sub.status === 'converted' && (
-                        <span className="px-1.5 py-0.2 rounded-[3px] bg-blue-500/10 text-blue-400 border border-blue-500/20 text-[10px] font-medium">
-                          ✓ Pipeline
+                        <span className="px-1.5 py-0.2 rounded-[3px] bg-blue-500/10 text-blue-400 border border-blue-500/20 text-[10px] font-medium flex items-center gap-0.5 w-fit">
+                          <IconCheck size={10} />
+                          <span>Pipeline</span>
                         </span>
                       )}
                       {sub.status === 'dismissed' && (
@@ -816,8 +817,11 @@ async function submitProjectInquiry(data) {
               </button>
             </div>
 
-            <div className="p-2.5 rounded-[5px] bg-[var(--t-background-secondary)] border border-[var(--t-border-color-light)] text-[11px] text-[var(--t-font-color-secondary)]">
-              💡 <strong>Cal.com Webhook:</strong> In Cal.com Settings &gt; Webhooks, add your URL <code className="text-cyan-400 font-mono">http://your-crm.vercel.app/api/inbound-leads</code> to automatically capture booked demo calls!
+            <div className="p-2.5 rounded-[5px] bg-[var(--t-background-secondary)] border border-[var(--t-border-color-light)] text-[11px] text-[var(--t-font-color-secondary)] flex items-start gap-1.5">
+              <IconSparkles size={14} className="text-cyan-400 shrink-0 mt-0.5" />
+              <div>
+                <strong>Cal.com Webhook:</strong> In Cal.com Settings &gt; Webhooks, add your URL <code className="text-cyan-400 font-mono">http://your-crm.vercel.app/api/inbound-leads</code> to automatically capture booked demo calls!
+              </div>
             </div>
 
             <div className="flex justify-end pt-1">

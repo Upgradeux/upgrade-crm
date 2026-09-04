@@ -141,6 +141,25 @@ export function getTwitterUrl(urlOrHandle: string): string {
   return `https://x.com/${clean}`;
 }
 
+export function getInstagramUrl(urlOrHandle: string): string {
+  if (!urlOrHandle) return '';
+  if (urlOrHandle.startsWith('http')) return urlOrHandle;
+  const clean = urlOrHandle.replace(/^@/, '');
+  return `https://instagram.com/${clean}`;
+}
+
+export function getLinkedInUrl(urlOrHandle: string): string {
+  if (!urlOrHandle) return '';
+  if (urlOrHandle.startsWith('http')) return urlOrHandle;
+  return `https://linkedin.com/in/${urlOrHandle.replace(/^@/, '')}`;
+}
+
+export function getFacebookUrl(urlOrHandle: string): string {
+  if (!urlOrHandle) return '';
+  if (urlOrHandle.startsWith('http')) return urlOrHandle;
+  return `https://facebook.com/${urlOrHandle.replace(/^@/, '')}`;
+}
+
 export function formatTwitterHandle(urlOrHandle: string): string {
   if (!urlOrHandle) return '';
   if (urlOrHandle.startsWith('http')) {

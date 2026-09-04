@@ -173,6 +173,7 @@ export interface Lead {
   services?: ServiceType[];
   rating?: number;
   reviewCount?: number;
+  followers?: string;
   alternatePhone?: string;
   industry?: string;
   industrySpaceId?: string;

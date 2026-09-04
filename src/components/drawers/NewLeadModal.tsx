@@ -41,6 +41,8 @@ export function NewLeadModal() {
     setIsNewLeadModalOpen, 
     addLead, 
     teamMembers,
+    activeMemberId,
+    currentUser,
     spaces,
     activeSpaceId,
     addToast,
@@ -70,10 +72,13 @@ export function NewLeadModal() {
   const [selectedServices, setSelectedServices] = useState<ServiceType[]>(['Web Development']);
   const [status, setStatus] = useState<LeadStatus>('Leads');
   const [outreachStage, setOutreachStage] = useState<OutreachStage>('Needs Outreach');
-  const [leadOwner, setLeadOwner] = useState('Unassigned');
+  const [leadOwner, setLeadOwner] = useState('Swapnil');
   const [twitter, setTwitter] = useState('');
   const [instagram, setInstagram] = useState('');
   const [linkedin, setLinkedin] = useState('');
+  const [rating, setRating] = useState<number | undefined>(undefined);
+  const [reviewCount, setReviewCount] = useState<number | undefined>(undefined);
+  const [followers, setFollowers] = useState<string | undefined>(undefined);
   const [initialNote, setInitialNote] = useState('');
 
   const toggleService = (svc: ServiceType) => {
@@ -90,11 +95,17 @@ export function NewLeadModal() {
   React.useEffect(() => {
     if (isNewLeadModalOpen) {
       setSelectedSpaceId(activeSpaceId || 'all');
-      if (teamMembers.length > 0 && leadOwner === 'Unassigned') {
-        setLeadOwner(`${teamMembers[0].name} (${teamMembers[0].role.split(' ')[0]})`);
+      
+      // Default assigned member based on logged in user
+      const currentMember = teamMembers.find(
+        (m) => m.id === activeMemberId || (currentUser?.email && m.email.toLowerCase() === currentUser.email.toLowerCase())
+      ) || teamMembers[0];
+
+      if (currentMember) {
+        setLeadOwner(currentMember.name);
       }
     }
-  }, [isNewLeadModalOpen, activeSpaceId, teamMembers, leadOwner]);
+  }, [isNewLeadModalOpen, activeSpaceId, teamMembers, activeMemberId, currentUser]);
 
   const spaceOptions = [
     { value: 'all', label: 'All Spaces (General / Global)' },
@@ -176,7 +187,7 @@ export function NewLeadModal() {
       }
       if (d.phone) {
         setPhone(d.phone);
-        found.push('Phone');
+        found.push('Primary Phone');
       }
       if (d.alternatePhone) {
         setAlternatePhone(d.alternatePhone);
@@ -205,6 +216,19 @@ export function NewLeadModal() {
       if (d.instagram) {
         setInstagram(d.instagram);
         found.push('Instagram');
+      }
+      if (d.followers) {
+        setFollowers(d.followers);
+        found.push(d.followers);
+      }
+      if (d.rating) {
+        setRating(d.rating);
+        if (d.reviewCount) {
+          setReviewCount(d.reviewCount);
+          found.push(`Rating: ${d.rating} (${d.reviewCount} Reviews)`);
+        } else {
+          found.push(`Rating: ${d.rating}`);
+        }
       }
       if (d.linkedin) {
         setLinkedin(d.linkedin);
@@ -245,6 +269,9 @@ export function NewLeadModal() {
     setTwitter('');
     setInstagram('');
     setLinkedin('');
+    setRating(undefined);
+    setReviewCount(undefined);
+    setFollowers(undefined);
     setStatus('Leads');
     setOutreachStage('Needs Outreach');
     setSelectedServices(['Web Development']);
@@ -279,6 +306,9 @@ export function NewLeadModal() {
       status,
       outreachStage,
       leadOwner: leadOwner.trim() || 'Unassigned',
+      rating,
+      reviewCount,
+      followers,
       socials: {
         linkedin: linkedin.trim() || undefined,
         instagram: instagram.trim() || undefined,
@@ -354,7 +384,10 @@ export function NewLeadModal() {
           {/* Extracted Feedback Badges */}
           {extractedFields.length > 0 && (
             <div className="flex items-center gap-1.5 flex-wrap pt-0.5 text-[10px]">
-              <span className="text-emerald-500 font-medium">✓ Auto-filled:</span>
+              <span className="text-emerald-500 font-medium flex items-center gap-0.5">
+                <IconCheck size={11} />
+                <span>Auto-filled:</span>
+              </span>
               {extractedFields.map((f, idx) => (
                 <span key={idx} className="px-1.5 py-0.2 rounded bg-emerald-500/15 text-emerald-400 font-mono border border-emerald-500/20">
                   {f}

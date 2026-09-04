@@ -28,7 +28,7 @@ export interface ExtractedLeadData {
   confidenceFields: string[];
 }
 
-// In-Memory Cache with 15-minute TTL to guarantee instant, 100% consistent results on repeat clicks
+// In-Memory Cache with 15-minute TTL to guarantee instant, 100% consistent results across repeat clicks
 interface CacheEntry {
   data: ExtractedLeadData;
   timestamp: number;
@@ -80,6 +80,26 @@ function isDirectoryUrl(url: string): boolean {
   return DIRECTORY_DOMAINS.some((d) => lower.includes(d));
 }
 
+function cleanCompanyName(raw: string): string {
+  if (!raw) return '';
+  return raw
+    .replace(/^[-–—|•:\/,\s]+/, '')
+    .replace(/[-–—|•:\/,\s]+$/, '')
+    .replace(/\s*[-–—|•]\s*$/, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+const JOB_TITLE_WORDS = new Set([
+  'analyst', 'engineer', 'developer', 'specialist', 'manager', 'executive', 'technician',
+  'consultant', 'officer', 'coordinator', 'administrator', 'representative', 'associate',
+  'assistant', 'operator', 'inspector', 'worker', 'employee', 'driver', 'guard', 'helper',
+  'security analyst', 'software engineer', 'web developer', 'marketing specialist',
+  'pest control', 'pest control service', 'service provider', 'customer support', 'team lead', 'stylist', 'doctor',
+  'dentist', 'physician', 'lawyer', 'advocate', 'accountant', 'auditor', 'broker', 'lead',
+  'designer', 'photographer', 'videographer', 'writer', 'editor', 'staff', 'member', 'personnel'
+]);
+
 const KNOWN_INVALID_NAMES = new Set([
   'address at', 'google search', 'view profile', 'contact us', 'privacy policy', 'terms of service',
   'instagram photo', 'facebook post', 'see more', 'sign up', 'log in', 'directors', 'founders', 'proprietors',
@@ -87,15 +107,35 @@ const KNOWN_INVALID_NAMES = new Set([
   'mumbai', 'maharashtra', 'india', 'bandra west', 'new york', 'london', 'duckduckgo', 'justdial', 'asklaila',
   'locobiz', 'worldplaces', 'nearbuy', 'wedmegood', 'at duckduckgo', 'duckduckgo feedback', 'home', 'about',
   'services', 'pricing', 'reviews', 'photos', 'videos', 'locations', 'address', 'phone', 'email', 'website',
-  'hours', 'ratings', 'overview', 'direction', 'directions', 'call now', 'book now', 'send message'
+  'hours', 'ratings', 'overview', 'direction', 'directions', 'call now', 'book now', 'send message',
+  'security analyst', 'software engineer', 'web developer', 'marketing specialist', 'pest control'
 ]);
+
+function isJobTitleOrInvalidName(name: string, companyName = ''): boolean {
+  if (!name || name.length < 3 || name.length > 35) return true;
+  const lower = name.toLowerCase().trim();
+  
+  if (KNOWN_INVALID_NAMES.has(lower) || JOB_TITLE_WORDS.has(lower)) return true;
+  if (companyName && (lower.includes(companyName.toLowerCase()) || companyName.toLowerCase().includes(lower))) return true;
+
+  // Check if ends with job title words
+  const words = lower.split(/\s+/);
+  const lastWord = words[words.length - 1];
+  if (JOB_TITLE_WORDS.has(lastWord)) return true;
+
+  // Check company noun endings
+  const companyNouns = ['services', 'service', 'solutions', 'enterprises', 'studio', 'salon', 'clinic', 'agency', 'company', 'pvt', 'ltd', 'firm', 'hub', 'care', 'center', 'store', 'shop'];
+  if (companyNouns.includes(lastWord)) return true;
+
+  return false;
+}
 
 const CITIES = [
   'Mumbai', 'Navi Mumbai', 'Thane', 'Bandra', 'Andheri', 'Juhu', 'Worli', 'Colaba', 'Borivali', 'Powai', 'Dadar', 'Khar', 'Santacruz', 'Goregaon', 'Malad',
   'Delhi', 'New Delhi', 'Gurgaon', 'Gurugram', 'Noida', 'Faridabad', 'Ghaziabad',
   'Bengaluru', 'Bangalore', 'Whitefield', 'Koramangala', 'Indiranagar', 'HSR Layout', 'Jayanagar',
   'Hyderabad', 'Secunderabad', 'HITEC City', 'Gachibowli', 'Jubilee Hills', 'Banjara Hills',
-  'Pune', 'Kothrud', 'Viman Nagar', 'Hinjewadi', 'Baner', 'Kalyani Nagar', 'Wakad', 'Aundh',
+  'Pune', 'Kothrud', 'Viman Nagar', 'Hinjewadi', 'Baner', 'Kalyani Nagar', 'Wakad', 'Aundh', 'Katraj', 'Swargate', 'Hadapsar',
   'Chennai', 'Kolkata', 'Ahmedabad', 'Surat', 'Jaipur', 'Lucknow', 'Kanpur', 'Nagpur', 'Indore', 'Kochi', 'Goa', 'Chandigarh',
   'London', 'Manchester', 'Birmingham', 'New York', 'Los Angeles', 'Chicago', 'Houston', 'Dallas', 'Austin', 'San Francisco', 'Miami', 'Toronto', 'Vancouver', 'Sydney', 'Melbourne', 'Dubai', 'Abu Dhabi', 'Singapore'
 ];
@@ -193,6 +233,8 @@ function cleanLocationString(raw: string): string {
   // Ensure City is attached if area is recognized
   if (/Bandra/i.test(clean) && !/Mumbai/i.test(clean)) {
     clean = `${clean}, Mumbai`;
+  } else if (/Katraj|Swargate|Kothrud|Baner|Hinjewadi|Wakad/i.test(clean) && !/Pune/i.test(clean)) {
+    clean = `${clean}, Pune`;
   } else if (/Koramangala|Indiranagar|Whitefield|HSR/i.test(clean) && !/Bangalore|Bengaluru/i.test(clean)) {
     clean = `${clean}, Bangalore`;
   } else if (/Gurgaon|Gurugram|Noida/i.test(clean) && !/Delhi|NCR/i.test(clean)) {
@@ -232,7 +274,7 @@ function extractPhoneNumbers(html: string): { primary?: string; alternate?: stri
     }
   }
 
-  // 2. Indian Landlines with STD code (e.g. 022-26401234)
+  // 2. Indian Landlines with STD code (e.g. 022-26401234, 020-24361234)
   for (const m of html.matchAll(IN_LANDLINE_REGEX)) {
     const digits = m[0].replace(/\D/g, '');
     if (digits.length >= 10 && digits.length <= 11) {
@@ -321,32 +363,37 @@ function extractFollowers(html: string): string | undefined {
   return m ? m[0].trim() : undefined;
 }
 
-// Extract Owner / Contact person (strictly filtered against generic words & locations)
+// Extract Owner / Contact person (strictly filtered against generic words, job titles & locations)
 function extractContactPerson(html: string, companyName: string): string | undefined {
+  if (!html) return undefined;
+
+  // 1. LinkedIn profile slug pattern (linkedin.com/in/first-last)
   const liSlugMatch = html.match(/linkedin\.com\/in\/([a-zA-Z0-9_-]+)/i);
   if (liSlugMatch && liSlugMatch[1]) {
     const slug = liSlugMatch[1].replace(/-\d+[a-z0-9]*$/i, '').replace(/[-_]/g, ' ');
     const words = slug.split(' ').map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase());
     if (words.length >= 2 && words.length <= 3) {
       const potentialName = words.join(' ');
-      if (!KNOWN_INVALID_NAMES.has(potentialName.toLowerCase())) {
+      if (!isJobTitleOrInvalidName(potentialName, companyName)) {
         return potentialName;
       }
     }
   }
 
-  const liTitleMatch = html.match(/([A-Z][a-z]+(?:\s+[A-Z]['’]?[A-Za-z]+)+)\s*[-–—|]\s*(?:Owner|Director|Founder|Co-Founder|Proprietor|Managing Director|Lead|Stylist|Doctor|Principal|Creative Director|CEO)?\s*[-–—|]?\s*(?:[A-Za-z0-9\s]+)?\|\s*LinkedIn/i);
+  // 2. Strict LinkedIn Title pattern: Name - Owner/Founder/CEO | LinkedIn
+  const liTitleMatch = html.match(/([A-Z][a-z]+(?:\s+[A-Z]['’]?[A-Za-z]+){1,2})\s*[-–—|]\s*(?:Owner|Founder|Co-Founder|Proprietor|Managing Director|CEO|MD)\b[^-–—|]*\|\s*LinkedIn/i);
   if (liTitleMatch && liTitleMatch[1]) {
     const name = liTitleMatch[1].trim();
-    if (!KNOWN_INVALID_NAMES.has(name.toLowerCase()) && !name.toLowerCase().includes(companyName.toLowerCase())) {
+    if (!isJobTitleOrInvalidName(name, companyName)) {
       return name;
     }
   }
 
+  // 3. Explicit Director/Founder/Owner pattern: "Founder: First Last"
   const dirMatch = html.match(/(?:Director|Directors|Founder|Founders|Owner|Owners|Proprietor|Proprietors)\s*[:–-]?\s*([A-Z][a-z]+(?:\s+and\s+[A-Z][a-z]+)?(?:\s+[A-Z]['’]?[A-Za-z]+)?)/i);
   if (dirMatch && dirMatch[1]) {
     const name = dirMatch[1].replace(/\s+\band\b\s+/gi, ' & ').trim();
-    if (!KNOWN_INVALID_NAMES.has(name.toLowerCase()) && !name.toLowerCase().includes(companyName.toLowerCase()) && name.length > 3 && name.length < 35) {
+    if (!isJobTitleOrInvalidName(name, companyName)) {
       return name;
     }
   }
@@ -359,11 +406,13 @@ async function multiSearchEnrichment(queries: string[]): Promise<string> {
   const fetchUrls: string[] = [];
 
   for (const q of queries) {
-    const encoded = encodeURIComponent(q);
+    const cleanQ = cleanCompanyName(q);
+    if (!cleanQ) continue;
+    const encoded = encodeURIComponent(cleanQ);
     fetchUrls.push(
-      `https://search.yahoo.com/search?p=${encoded}&ei=UTF-8`,
       `https://lite.duckduckgo.com/lite/?q=${encoded}`,
       `https://html.duckduckgo.com/html/?q=${encoded}&kl=wt-wt`,
+      `https://search.yahoo.com/search?p=${encoded}&ei=UTF-8`,
       `https://www.bing.com/search?q=${encoded}&setlang=en`
     );
   }
@@ -489,7 +538,7 @@ export async function POST(req: NextRequest) {
           const rawTitle = decodeHtmlEntities(ogTitleMatch[1]);
           const namePart = rawTitle.split(/\(@|\s*•\s*Instagram|\s*on Instagram/i)[0].trim();
           if (namePart && namePart.toLowerCase() !== username.toLowerCase()) {
-            data.companyName = namePart;
+            data.companyName = cleanCompanyName(namePart);
             data.confidenceFields.push('Company Name');
           }
         }
@@ -614,34 +663,54 @@ export async function POST(req: NextRequest) {
       // 1. Extract from /maps/place/<Name, Address>/
       const placeMatch = resolvedUrl.match(/\/maps\/place\/([^/@?]+)/i);
       if (placeMatch && placeMatch[1]) {
-        const rawPlace = decodeURIComponent(placeMatch[1].replace(/\+/g, ' '));
-        const parts = rawPlace.split(',').map((p) => p.trim()).filter(Boolean);
-        if (parts.length > 1) {
-          data.companyName = parts[0];
-          data.location = cleanLocationString(parts.slice(1).join(', '));
-          data.confidenceFields.push('Business Name');
-          if (data.location) data.confidenceFields.push('Location');
-        } else if (parts.length === 1) {
-          data.companyName = parts[0];
-          data.confidenceFields.push('Business Name');
+        let rawPlace = decodeURIComponent(placeMatch[1].replace(/\+/g, ' '));
+        
+        // Extract city from "Place - City" or "Place, City"
+        for (const city of CITIES) {
+          const regex = new RegExp(`\\s*[-–—|•,]\\s*(${city})\\b.*$`, 'i');
+          const m = rawPlace.match(regex);
+          if (m && m.index && m.index > 3) {
+            data.location = cleanLocationString(m[1].trim());
+            rawPlace = rawPlace.substring(0, m.index).trim();
+            break;
+          }
         }
+        
+        const parts = rawPlace.split(/[,–|•]/).map((p) => p.trim()).filter(Boolean);
+        if (parts.length > 1) {
+          data.companyName = cleanCompanyName(parts[0]);
+          if (!data.location) data.location = cleanLocationString(parts.slice(1).join(', '));
+        } else {
+          data.companyName = cleanCompanyName(rawPlace);
+        }
+        
+        if (data.companyName) data.confidenceFields.push('Business Name');
+        if (data.location) data.confidenceFields.push('Location');
       }
 
       // 2. Extract from /maps/search/<Name+Location>/
       if (!data.companyName) {
         const searchMatch = resolvedUrl.match(/\/maps\/search\/([^/@?]+)/i);
         if (searchMatch && searchMatch[1]) {
-          const rawSearch = decodeURIComponent(searchMatch[1].replace(/\+/g, ' '));
-          const parts = rawSearch.split(',').map((p) => p.trim()).filter(Boolean);
-          if (parts.length > 1) {
-            data.companyName = parts[0];
-            data.location = cleanLocationString(parts.slice(1).join(', '));
-            data.confidenceFields.push('Business Name');
-            if (data.location) data.confidenceFields.push('Location');
-          } else {
-            data.companyName = rawSearch;
-            data.confidenceFields.push('Business Name');
+          let rawSearch = decodeURIComponent(searchMatch[1].replace(/\+/g, ' '));
+          for (const city of CITIES) {
+            const regex = new RegExp(`\\s*[-–—|•,]\\s*(${city})\\b.*$`, 'i');
+            const m = rawSearch.match(regex);
+            if (m && m.index && m.index > 3) {
+              data.location = cleanLocationString(m[1].trim());
+              rawSearch = rawSearch.substring(0, m.index).trim();
+              break;
+            }
           }
+          const parts = rawSearch.split(/[,–|•]/).map((p) => p.trim()).filter(Boolean);
+          if (parts.length > 1) {
+            data.companyName = cleanCompanyName(parts[0]);
+            if (!data.location) data.location = cleanLocationString(parts.slice(1).join(', '));
+          } else {
+            data.companyName = cleanCompanyName(rawSearch);
+          }
+          if (data.companyName) data.confidenceFields.push('Business Name');
+          if (data.location) data.confidenceFields.push('Location');
         }
       }
 
@@ -651,17 +720,25 @@ export async function POST(req: NextRequest) {
           const parsed = new URL(resolvedUrl);
           const qParam = parsed.searchParams.get('q') || parsed.searchParams.get('query');
           if (qParam && !qParam.toLowerCase().includes('google search')) {
-            const qClean = qParam.replace(/\+/g, ' ').trim();
-            const parts = qClean.split(',').map((p) => p.trim()).filter(Boolean);
-            if (parts.length > 1) {
-              if (!data.companyName) data.companyName = parts[0];
-              if (!data.location) data.location = cleanLocationString(parts.slice(1).join(', '));
-              data.confidenceFields.push('Business Name');
-              if (data.location) data.confidenceFields.push('Location');
-            } else if (!data.companyName) {
-              data.companyName = qClean;
-              data.confidenceFields.push('Business Name');
+            let qClean = qParam.replace(/\+/g, ' ').trim();
+            for (const city of CITIES) {
+              const regex = new RegExp(`\\s*[-–—|•,]\\s*(${city})\\b.*$`, 'i');
+              const m = qClean.match(regex);
+              if (m && m.index && m.index > 3) {
+                if (!data.location) data.location = cleanLocationString(m[1].trim());
+                qClean = qClean.substring(0, m.index).trim();
+                break;
+              }
             }
+            const parts = qClean.split(/[,–|•]/).map((p) => p.trim()).filter(Boolean);
+            if (parts.length > 1) {
+              if (!data.companyName) data.companyName = cleanCompanyName(parts[0]);
+              if (!data.location) data.location = cleanLocationString(parts.slice(1).join(', '));
+            } else if (!data.companyName) {
+              data.companyName = cleanCompanyName(qClean);
+            }
+            if (data.companyName) data.confidenceFields.push('Business Name');
+            if (data.location && !data.confidenceFields.includes('Location')) data.confidenceFields.push('Location');
           }
         } catch {}
       }
@@ -673,7 +750,7 @@ export async function POST(req: NextRequest) {
           const rawOg = decodeHtmlEntities(ogTitle[1]);
           const parts = rawOg.split(/[·•|-]/).map((p) => p.trim()).filter(Boolean);
           if (parts.length > 1) {
-            if (!data.companyName) data.companyName = parts[0];
+            if (!data.companyName) data.companyName = cleanCompanyName(parts[0]);
             if (!data.location) data.location = cleanLocationString(parts.slice(1).join(', ').replace(/\s*Google Maps\s*/i, ''));
             if (data.location && !data.confidenceFields.includes('Location')) data.confidenceFields.push('Location');
           }
@@ -684,11 +761,11 @@ export async function POST(req: NextRequest) {
           const cleanTitle = decodeHtmlEntities(titleMatch[1]).replace(/\s*-\s*Google Maps\s*$/i, '').trim();
           const parts = cleanTitle.split(/[-–·•]/).map((p) => p.trim()).filter(Boolean);
           if (parts.length > 1) {
-            if (!data.companyName) data.companyName = parts[0];
+            if (!data.companyName) data.companyName = cleanCompanyName(parts[0]);
             if (!data.location) data.location = cleanLocationString(parts.slice(1).join(', '));
             if (data.location && !data.confidenceFields.includes('Location')) data.confidenceFields.push('Location');
           } else if (!data.companyName) {
-            data.companyName = cleanTitle;
+            data.companyName = cleanCompanyName(cleanTitle);
           }
         }
       }
@@ -702,7 +779,7 @@ export async function POST(req: NextRequest) {
             const potentialName = data.companyName.substring(0, m.index).trim();
             const potentialLoc = data.companyName.substring(m.index).trim();
             if (potentialName.length > 2) {
-              data.companyName = potentialName;
+              data.companyName = cleanCompanyName(potentialName);
               data.location = cleanLocationString(potentialLoc);
               if (data.location) data.confidenceFields.push('Location');
               break;
@@ -711,13 +788,19 @@ export async function POST(req: NextRequest) {
         }
       }
 
+      // Final clean of companyName
+      if (data.companyName) {
+        data.companyName = cleanCompanyName(data.companyName);
+      }
+
       // If we have the company name, execute parallel multi-search enrichment
       if (data.companyName) {
         data.mapsUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(data.companyName)}`;
 
         const searchHtml = await multiSearchEnrichment([
-          `${data.companyName} ${data.location || ''} phone instagram contact address`,
-          `${data.companyName} instagram`,
+          `${data.companyName} ${data.location || ''} phone contact Justdial`,
+          `${data.companyName} ${data.location || ''} phone contact address`,
+          `${data.companyName} ${data.location || ''} instagram`,
         ]);
 
         // 1. Instagram Handle & Followers
@@ -731,7 +814,6 @@ export async function POST(req: NextRequest) {
         if (followersCount) {
           data.followers = followersCount;
           data.confidenceFields.push(followersCount);
-          // If followers found but instagram missing, infer from handle or name
           if (!data.instagram) {
             const fallbackIg = extractInstagramHandle(searchHtml, data.companyName);
             if (fallbackIg) {
@@ -774,7 +856,7 @@ export async function POST(req: NextRequest) {
           data.confidenceFields.push('Alternate Phone');
         }
 
-        // 5. Contact Person / Owner (Strict validation)
+        // 5. Contact Person / Owner (Strict zero-hallucination validation)
         const owner = extractContactPerson(searchHtml, data.companyName);
         if (owner) {
           data.contactName = owner;
@@ -811,6 +893,7 @@ export async function POST(req: NextRequest) {
 
         // 7. Rating & Review Count
         const ratingMatch =
+          searchHtml.match(/Rated\s*(\d\.\d)\s*based on\s*(\d+)\s*Customer Reviews/i) ||
           searchHtml.match(/(\d\.\d)\s*(?:\/5|stars|★|\s*rating)[^\d]*(\d+)\s*(?:reviews|votes|ratings)/i) ||
           searchHtml.match(/Rating:\s*(\d\.\d)[^\d]*(\d+)\s*reviews/i) ||
           searchHtml.match(/Rated\s*(\d\.\d)\/5[^\d]*(\d+)\s*Ratings/i) ||
@@ -930,7 +1013,7 @@ export async function POST(req: NextRequest) {
     const siteData = await scrapeCompanyWebsite(targetUrl);
 
     if (siteData.companyName) {
-      data.companyName = siteData.companyName;
+      data.companyName = cleanCompanyName(siteData.companyName);
       data.confidenceFields.push('Company Name');
     }
     if (siteData.email) {

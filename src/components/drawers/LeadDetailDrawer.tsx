@@ -1048,12 +1048,12 @@ export function LeadDetailDrawer() {
               </div>
 
               {/* Continuous Timeline with Spine */}
-              <div className="relative pl-6 space-y-3.5 pt-1 before:absolute before:left-2.5 before:top-2.5 before:bottom-2 before:w-[1px] before:bg-[var(--t-border-color-light)]">
+              <div className="relative pl-8 space-y-4 pt-1.5 before:absolute before:left-3 before:top-2.5 before:bottom-2 before:w-[1px] before:bg-[var(--t-border-color-light)]">
                 {timelineItems.map((item) => (
                   <div key={item.id} className="relative group text-[11.5px]">
                     {/* Node Icon on Spine */}
                     <div
-                      className={`absolute -left-6 top-0.5 w-[20px] h-[20px] rounded-full flex items-center justify-center bg-[var(--t-background-primary)] border text-[10.5px] z-10 ${item.iconBg} ${item.iconColor}`}
+                      className={`absolute -left-8 top-0 w-[22px] h-[22px] rounded-full flex items-center justify-center bg-[var(--t-background-primary)] border text-[11px] z-10 shadow-2xs ${item.iconBg} ${item.iconColor}`}
                     >
                       {item.icon}
                     </div>
@@ -1063,16 +1063,16 @@ export function LeadDetailDrawer() {
                       {/* Top Header Row */}
                       <div className="flex items-center justify-between gap-2">
                         <div className="flex items-center gap-1.5 flex-wrap min-w-0">
-                          {item.author && (
-                            <span className="font-semibold text-[var(--t-font-color-primary)] text-[11px]">
-                              {item.author}
-                            </span>
-                          )}
-                          <span className="text-[11px] text-[var(--t-font-color-secondary)]">
+                          <span className="font-semibold text-[var(--t-font-color-primary)] text-[11.5px]">
                             {item.title}
                           </span>
+                          {item.author && item.type !== 'created' && (
+                            <span className="text-[10px] text-[var(--t-font-color-tertiary)] font-normal">
+                              by {item.author}
+                            </span>
+                          )}
                           {item.badge && (
-                            <span className={`text-[9px] font-medium px-1.5 py-0.2 rounded ${item.badge.colorClass}`}>
+                            <span className={`text-[9.5px] font-medium px-1.5 py-0.5 rounded-[3px] ${item.badge.colorClass}`}>
                               {item.badge.label}
                             </span>
                           )}
@@ -1114,8 +1114,8 @@ export function LeadDetailDrawer() {
                         <div
                           className={`text-[11px] leading-relaxed whitespace-pre-wrap ${
                             item.isNote
-                              ? 'p-2 rounded-[5px] bg-[var(--t-background-secondary)] border border-[var(--t-border-color-light)] text-[var(--t-font-color-primary)]'
-                              : 'text-[var(--t-font-color-tertiary)] text-[10.5px]'
+                              ? 'p-2.5 rounded-[5px] bg-[var(--t-background-secondary)] border border-[var(--t-border-color-light)] text-[var(--t-font-color-primary)] mt-1'
+                              : 'text-[var(--t-font-color-secondary)] text-[10.5px] pt-0.5'
                           }`}
                         >
                           {item.description}

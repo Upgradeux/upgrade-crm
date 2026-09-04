@@ -216,6 +216,13 @@ export function NewLeadModal() {
       if (d.instagram) {
         setInstagram(d.instagram);
         found.push('Instagram');
+      } else if (d.followers) {
+        const noteHandle = d.notes?.match(/@([a-zA-Z0-9_.]+)/i)?.[1] ||
+                           d.confidenceFields?.find((f: string) => f.startsWith('@'))?.replace(/^@/, '');
+        if (noteHandle) {
+          setInstagram(`@${noteHandle}`);
+          found.push('Instagram');
+        }
       }
       if (d.followers) {
         setFollowers(d.followers);

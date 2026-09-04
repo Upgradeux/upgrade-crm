@@ -28,6 +28,14 @@ export interface ExtractedLeadData {
   confidenceFields: string[];
 }
 
+// In-Memory Cache with 15-minute TTL to guarantee instant, 100% consistent results on repeat clicks
+interface CacheEntry {
+  data: ExtractedLeadData;
+  timestamp: number;
+}
+const EXTRACTION_CACHE = new Map<string, CacheEntry>();
+const CACHE_TTL_MS = 15 * 60 * 1000;
+
 // Regex helpers
 const EMAIL_REGEX = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/gi;
 const IN_MOBILE_REGEX = /(?:\+91[\s-]?)?[6789]\d{4}[\s-]?\d{5}\b/g;
@@ -35,23 +43,18 @@ const IN_LANDLINE_REGEX = /\b0\d{2,4}[-\s]?\d{6,8}\b/g;
 const US_PHONE_REGEX = /\b(?:\+1[-. ]?)?\(?[2-9]\d{2}\)?[-. ]?[2-9]\d{2}[-. ]?\d{4}\b/g;
 const UK_PHONE_REGEX = /\b(?:\+44|0)[1-9]\d{8,9}\b/g;
 
-const IG_URL_REGEX = /(?:https?:\/\/)?(?:www\.)?(?:instagram\.com|instagr\.am)\/([a-zA-Z0-9_.]+)/i;
+const IG_URL_REGEX = /(?:https?:\/\/)?(?:www\.)?(?:instagram\.com|instagr\.am)\/(?:p\/|reel\/)?([a-zA-Z0-9_.]+)/i;
 const LI_URL_REGEX = /(?:https?:\/\/)?(?:[a-z]{2,3}\.)?linkedin\.com\/(?:company|in)\/([a-zA-Z0-9_-]+)/i;
 const TW_URL_REGEX = /(?:https?:\/\/)?(?:www\.)?(?:twitter\.com|x\.com)\/([a-zA-Z0-9_]+)/i;
 const FB_URL_REGEX = /(?:https?:\/\/)?(?:www\.)?facebook\.com\/(?:p\/|people\/|pages\/)?([a-zA-Z0-9.\-_]{3,50})/i;
 
 const BROWSER_HEADERS = {
-  'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
-  'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
+  'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36',
+  'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
   'Accept-Language': 'en-US,en;q=0.9',
-  'Cache-Control': 'max-age=0',
-  'Sec-Ch-Ua': '"Chromium";v="124", "Google Chrome";v="124"',
+  'Sec-Ch-Ua': '"Chromium";v="128", "Not;A=Brand";v="24", "Google Chrome";v="128"',
   'Sec-Ch-Ua-Mobile': '?0',
   'Sec-Ch-Ua-Platform': '"Windows"',
-  'Sec-Fetch-Dest': 'document',
-  'Sec-Fetch-Mode': 'navigate',
-  'Sec-Fetch-Site': 'none',
-  'Sec-Fetch-User': '?1',
   'Upgrade-Insecure-Requests': '1',
 };
 
@@ -68,7 +71,7 @@ const DIRECTORY_DOMAINS = [
   'mygreentrends.', 'mysalongo.', 'salonhub.', 'mrsalonix.', 'naturals.', 'malon.', 'salonsclub.', 'lakmesalon.',
   'healthfrog.', 'whatshot.', 'curlytales.', 'tripoto.', 'mouthshut.', 'practo.', 'lybrate.', '1mg.', 'netmeds.',
   'rightindia.', 'indiabizlist.', 'indiainfo.', 'searchcity.', 'localbiz.', 'citysearch.', 'yellowbook.', 'superpages.',
-  'loreal.', 'lorealprofessionnel.', 'kerastase.', 'schwarzkopf.', 'matrixprofessional.', 'wella.', 'olaplex.', 'aveda.'
+  'w3.org', 'live.com', 'bing.com', 'yahoo.com', 'duckduckgo.com', 'apple.com', 'lorealprofessionnel.', 'loreal.'
 ];
 
 function isDirectoryUrl(url: string): boolean {
@@ -83,7 +86,8 @@ const KNOWN_INVALID_NAMES = new Set([
   'salon muah', 'beauty salon', 'hair salon', 'ltd', 'pvt ltd', 'partnership', 'company profile', 'gst number',
   'mumbai', 'maharashtra', 'india', 'bandra west', 'new york', 'london', 'duckduckgo', 'justdial', 'asklaila',
   'locobiz', 'worldplaces', 'nearbuy', 'wedmegood', 'at duckduckgo', 'duckduckgo feedback', 'home', 'about',
-  'services', 'pricing', 'reviews', 'photos', 'videos', 'locations'
+  'services', 'pricing', 'reviews', 'photos', 'videos', 'locations', 'address', 'phone', 'email', 'website',
+  'hours', 'ratings', 'overview', 'direction', 'directions', 'call now', 'book now', 'send message'
 ]);
 
 const CITIES = [
@@ -101,7 +105,6 @@ function isLikelyCompanyWebsite(rawUrl: string, companyName: string): boolean {
   const domain = rawUrl.toLowerCase().replace(/^(https?:\/\/)?(www\.)?/, '').split('/')[0];
   const nameParts = companyName.toLowerCase().replace(/[^a-z0-9\s]/g, '').split(/\s+/).filter((p) => p.length > 2);
   if (nameParts.length === 0) return true;
-  // If domain matches any significant part of company name or brand
   return nameParts.some((part) => domain.includes(part));
 }
 
@@ -120,7 +123,18 @@ function decodeHtmlEntities(str: string): string {
     .replace(/&#x27;/gi, "'");
 }
 
-async function safeFetchHtml(url: string, timeoutMs = 8000): Promise<{ html: string; finalUrl: string } | null> {
+function decodeSearchUrl(raw: string): string {
+  if (!raw) return '';
+  try {
+    let decoded = decodeURIComponent(raw);
+    if (decoded.includes('%')) decoded = decodeURIComponent(decoded);
+    return decoded;
+  } catch {
+    return raw;
+  }
+}
+
+async function safeFetchHtml(url: string, timeoutMs = 4500): Promise<{ html: string; finalUrl: string } | null> {
   try {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), timeoutMs);
@@ -144,7 +158,7 @@ async function safeFetchHtml(url: string, timeoutMs = 8000): Promise<{ html: str
 const INVALID_LOCATION_WORDS = new Set([
   'official', 'website', 'contact', 'home', 'business', 'info', 'page', 'profile', 'dm', 'book',
   'link', 'store', 'shop', 'online', 'welcome', 'about', 'services', 'pricing', 'reviews', 'ratings',
-  'all rights reserved', 'privacy policy', 'terms', 'help', 'search', 'view'
+  'all rights reserved', 'privacy policy', 'terms', 'help', 'search', 'view', 'address', 'directions'
 ]);
 
 // Clean address string to concise "Area, City"
@@ -166,7 +180,6 @@ function cleanLocationString(raw: string): string {
 
   const parts = clean.split(/[,–|•]/).map((p) => p.trim()).filter(Boolean);
   if (parts.length > 2) {
-    // Prioritize Area and City
     const cityIdx = parts.findIndex((p) => CITIES.some((c) => p.toLowerCase().includes(c.toLowerCase())));
     if (cityIdx > 0) {
       clean = `${parts[cityIdx - 1]}, ${parts[cityIdx]}`;
@@ -177,7 +190,7 @@ function cleanLocationString(raw: string): string {
     }
   }
 
-  // If contains Bandra / Khar / Andheri without City
+  // Ensure City is attached if area is recognized
   if (/Bandra/i.test(clean) && !/Mumbai/i.test(clean)) {
     clean = `${clean}, Mumbai`;
   } else if (/Koramangala|Indiranagar|Whitefield|HSR/i.test(clean) && !/Bangalore|Bengaluru/i.test(clean)) {
@@ -238,7 +251,6 @@ function extractPhoneNumbers(html: string): { primary?: string; alternate?: stri
     if (!candidates.includes(val)) candidates.push(val);
   }
 
-  // Filter out any known invalid number sequences
   const valid = candidates.filter((p) => {
     const d = p.replace(/\D/g, '');
     return d !== '1234567890' && d !== '0000000000' && !p.includes('2024') && !p.includes('2025') && !p.includes('2026');
@@ -256,9 +268,61 @@ function cleanIndianMobile(digits: string): string {
   return digits;
 }
 
-// Extract Owner / Contact person
+// Extract Instagram Handle from any search HTML (direct links, encoded URLs, captions, title snippets)
+function extractInstagramHandle(html: string, companyName = ''): string | undefined {
+  if (!html) return undefined;
+  const decoded = decodeSearchUrl(html);
+
+  const invalidHandles = [
+    'p', 'reel', 'explore', 'stories', 'tv', 'about', 'tags', 'accounts', 'developer',
+    'directory', 'salon', 'locations', 'pvt', 'ltd', 'instagram', 'help', 'privacy', 'legal'
+  ];
+
+  // 1. Direct or decoded URL matches
+  const igPatterns = [
+    /(?:https?:\/\/)?(?:www\.)?(?:instagram\.com|instagr\.am)\/(?:p\/|reel\/)?([a-zA-Z0-9_.]+)/gi,
+    /uddg=https?%3A%2F%2F(?:www\.)?instagram\.com%2F([a-zA-Z0-9_.]+)/gi,
+    /RU=https?%3a%2f%2f(?:www\.)?instagram\.com%2f([a-zA-Z0-9_.]+)/gi,
+    /url\?q=https?:\/\/(?:www\.)?instagram\.com\/([a-zA-Z0-9_.]+)/gi,
+    /\(@([a-zA-Z0-9_.]+)\)\s*•\s*Instagram/gi,
+  ];
+
+  for (const regex of igPatterns) {
+    for (const m of html.matchAll(regex)) {
+      const h = m[1].toLowerCase().replace(/[/?#].*$/, '');
+      if (!invalidHandles.includes(h) && h.length >= 3) {
+        return `@${h}`;
+      }
+    }
+    for (const m of decoded.matchAll(regex)) {
+      const h = m[1].toLowerCase().replace(/[/?#].*$/, '');
+      if (!invalidHandles.includes(h) && h.length >= 3) {
+        return `@${h}`;
+      }
+    }
+  }
+
+  // 2. Search snippet text near "Followers" (e.g. "@salon_muah • 93K Followers")
+  const nearMatch = html.match(/([a-zA-Z0-9_.]+)\s*(?:\(@([a-zA-Z0-9_.]+)\))?[^<]{0,80}\b\d+(?:\.\d+)?[KkMmB]?\s+Followers/i);
+  if (nearMatch) {
+    const candidate = (nearMatch[2] || nearMatch[1]).toLowerCase().replace(/^@+/, '');
+    if (!invalidHandles.includes(candidate) && candidate.length >= 3) {
+      return `@${candidate}`;
+    }
+  }
+
+  return undefined;
+}
+
+// Extract Followers count string
+function extractFollowers(html: string): string | undefined {
+  if (!html) return undefined;
+  const m = html.match(/(\d+(?:\.\d+)?[KkMmB]?|\d{1,3}(?:,\d{3})+)\s+Followers/i);
+  return m ? m[0].trim() : undefined;
+}
+
+// Extract Owner / Contact person (strictly filtered against generic words & locations)
 function extractContactPerson(html: string, companyName: string): string | undefined {
-  // Check LinkedIn URL slug (e.g. in.linkedin.com/in/ryan-d-rozario-0524ab169)
   const liSlugMatch = html.match(/linkedin\.com\/in\/([a-zA-Z0-9_-]+)/i);
   if (liSlugMatch && liSlugMatch[1]) {
     const slug = liSlugMatch[1].replace(/-\d+[a-z0-9]*$/i, '').replace(/[-_]/g, ' ');
@@ -271,7 +335,6 @@ function extractContactPerson(html: string, companyName: string): string | undef
     }
   }
 
-  // Check LinkedIn Title (e.g. "Ryan D'Rozario - Salon Muah | LinkedIn")
   const liTitleMatch = html.match(/([A-Z][a-z]+(?:\s+[A-Z]['’]?[A-Za-z]+)+)\s*[-–—|]\s*(?:Owner|Director|Founder|Co-Founder|Proprietor|Managing Director|Lead|Stylist|Doctor|Principal|Creative Director|CEO)?\s*[-–—|]?\s*(?:[A-Za-z0-9\s]+)?\|\s*LinkedIn/i);
   if (liTitleMatch && liTitleMatch[1]) {
     const name = liTitleMatch[1].trim();
@@ -280,10 +343,9 @@ function extractContactPerson(html: string, companyName: string): string | undef
     }
   }
 
-  // Check Director / Founder text
-  const dirMatch = html.match(/(?:Director|Directors|Founder|Founders|Owner|Owners|Proprietor|Proprietors)\s+([A-Z][a-z]+(?:\s+and\s+[A-Z][a-z]+)?(?:\s+[A-Z]['’]?[A-Za-z]+)?)/i);
+  const dirMatch = html.match(/(?:Director|Directors|Founder|Founders|Owner|Owners|Proprietor|Proprietors)\s*[:–-]?\s*([A-Z][a-z]+(?:\s+and\s+[A-Z][a-z]+)?(?:\s+[A-Z]['’]?[A-Za-z]+)?)/i);
   if (dirMatch && dirMatch[1]) {
-    const name = dirMatch[1].replace(/and/gi, '&').trim();
+    const name = dirMatch[1].replace(/\s+\band\b\s+/gi, ' & ').trim();
     if (!KNOWN_INVALID_NAMES.has(name.toLowerCase()) && !name.toLowerCase().includes(companyName.toLowerCase()) && name.length > 3 && name.length < 35) {
       return name;
     }
@@ -292,35 +354,28 @@ function extractContactPerson(html: string, companyName: string): string | undef
   return undefined;
 }
 
-// Multi-engine search helper
+// Parallel Multi-Engine search across diverse resilient providers (Yahoo, DDG Lite, DDG HTML, Bing)
 async function multiSearchEnrichment(queries: string[]): Promise<string> {
-  const pages: string[] = [];
+  const fetchUrls: string[] = [];
 
   for (const q of queries) {
-    // 1. DuckDuckGo HTML
-    try {
-      const res = await fetch(`https://html.duckduckgo.com/html/?q=${encodeURIComponent(q)}&kl=wt-wt`, {
-        headers: BROWSER_HEADERS,
-      });
-      if (res.ok) {
-        const text = await res.text();
-        pages.push(text);
-      }
-    } catch {}
-
-    // 2. Yahoo Search Fallback
-    try {
-      const res = await fetch(`https://search.yahoo.com/search?p=${encodeURIComponent(q)}&nojs=1`, {
-        headers: BROWSER_HEADERS,
-      });
-      if (res.ok) {
-        const text = await res.text();
-        pages.push(text);
-      }
-    } catch {}
+    const encoded = encodeURIComponent(q);
+    fetchUrls.push(
+      `https://search.yahoo.com/search?p=${encoded}&ei=UTF-8`,
+      `https://lite.duckduckgo.com/lite/?q=${encoded}`,
+      `https://html.duckduckgo.com/html/?q=${encoded}&kl=wt-wt`,
+      `https://www.bing.com/search?q=${encoded}&setlang=en`
+    );
   }
 
-  return pages.join('\n');
+  const results = await Promise.allSettled(
+    fetchUrls.map((url) => safeFetchHtml(url, 4000))
+  );
+
+  return results
+    .filter((r): r is PromiseFulfilledResult<{ html: string; finalUrl: string } | null> => r.status === 'fulfilled' && !!r.value?.html)
+    .map((r) => r.value!.html)
+    .join('\n');
 }
 
 // Scrape business website
@@ -330,7 +385,7 @@ async function scrapeCompanyWebsite(websiteUrl: string): Promise<Partial<Extract
     return result;
   }
 
-  const fetched = await safeFetchHtml(websiteUrl, 5000);
+  const fetched = await safeFetchHtml(websiteUrl, 4500);
   if (!fetched) return result;
 
   const { html } = fetched;
@@ -354,7 +409,7 @@ async function scrapeCompanyWebsite(websiteUrl: string): Promise<Partial<Extract
   // Socials from website links
   const igMatch = html.match(IG_URL_REGEX);
   if (igMatch && igMatch[1]) {
-    const username = igMatch[1].toLowerCase();
+    const username = igMatch[1].toLowerCase().replace(/[/?#].*$/, '');
     if (!['p', 'explore', 'reel', 'stories', 'tv'].includes(username)) {
       result.instagram = `@${username}`;
     }
@@ -387,6 +442,13 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Please provide a valid URL or Instagram username' }, { status: 400 });
     }
 
+    // Check In-Memory Cache for instant, 100% consistent results across repeat clicks
+    const cacheKey = rawInput.toLowerCase();
+    const cached = EXTRACTION_CACHE.get(cacheKey);
+    if (cached && Date.now() - cached.timestamp < CACHE_TTL_MS) {
+      return NextResponse.json({ success: true, data: cached.data });
+    }
+
     const data: ExtractedLeadData = {
       confidenceFields: [],
     };
@@ -401,7 +463,7 @@ export async function POST(req: NextRequest) {
 
     if (isInstagramInput) {
       let username = rawInput.replace(/^@+/, '').trim();
-      const igUrlMatch = rawInput.match(/instagram\.com\/([a-zA-Z0-9_.]+)/i);
+      const igUrlMatch = rawInput.match(/instagram\.com\/(?:p\/|reel\/)?([a-zA-Z0-9_.]+)/i);
       if (igUrlMatch && igUrlMatch[1]) {
         username = igUrlMatch[1].replace(/[/?#].*$/, '');
       }
@@ -410,12 +472,12 @@ export async function POST(req: NextRequest) {
       data.source = 'Instagram';
       data.confidenceFields.push('Instagram Handle');
 
-      // Fetch public profile and search enrichment
+      // Fetch public profile and search enrichment in parallel
       const [igFetched, searchHtml] = await Promise.all([
-        safeFetchHtml(`https://www.instagram.com/${username}/`, 5000),
+        safeFetchHtml(`https://www.instagram.com/${username}/`, 4000),
         multiSearchEnrichment([
           `instagram ${username} phone email contact address`,
-          `${username} Mumbai Delhi London New York`,
+          `${username} Mumbai Delhi London New York website`,
         ]),
       ]);
 
@@ -469,10 +531,10 @@ export async function POST(req: NextRequest) {
       // Enrich from multi-search pages
       if (searchHtml) {
         if (!data.followers) {
-          const igFollowers = searchHtml.match(/(\d+(?:\.\d+)?[KkMmB]?|\d{1,3}(?:,\d{3})+)\s+Followers/i);
-          if (igFollowers && igFollowers[0]) {
-            data.followers = igFollowers[0].trim();
-            data.confidenceFields.push(data.followers);
+          const f = extractFollowers(searchHtml);
+          if (f) {
+            data.followers = f;
+            data.confidenceFields.push(f);
           }
         }
         const { primary, alternate } = extractPhoneNumbers(searchHtml);
@@ -518,6 +580,7 @@ export async function POST(req: NextRequest) {
         data.suggestedServices = ['AI Voice Agent'];
       }
 
+      EXTRACTION_CACHE.set(cacheKey, { data, timestamp: Date.now() });
       return NextResponse.json({ success: true, data });
     }
 
@@ -540,7 +603,7 @@ export async function POST(req: NextRequest) {
       data.mapsUrl = targetUrl;
       data.confidenceFields.push('Google Maps Link');
 
-      const fetched = await safeFetchHtml(targetUrl, 7000);
+      const fetched = await safeFetchHtml(targetUrl, 6000);
       let resolvedUrl = targetUrl;
       const mapsHtml = fetched?.html || '';
 
@@ -648,24 +711,33 @@ export async function POST(req: NextRequest) {
         }
       }
 
-      // If we have the company name, execute multi-search enrichment
+      // If we have the company name, execute parallel multi-search enrichment
       if (data.companyName) {
         data.mapsUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(data.companyName)}`;
 
         const searchHtml = await multiSearchEnrichment([
-          `${data.companyName} ${data.location || ''} phone instagram contact owner address`,
-          `${data.companyName} Mumbai Bandra Delhi Bangalore New York London`,
-          `${data.companyName} website official`,
+          `${data.companyName} ${data.location || ''} phone instagram contact address`,
+          `${data.companyName} instagram`,
         ]);
 
-        // 1. Instagram Handle
-        const igMatches = [...searchHtml.matchAll(/(?:instagram\.com|instagr\.am)\/([a-zA-Z0-9_.]+)/gi)];
-        for (const m of igMatches) {
-          const handle = m[1].replace(/[/?#].*$/, '').toLowerCase();
-          if (!['p', 'reel', 'explore', 'stories', 'tv', 'about', 'tags', 'accounts', 'developer', 'directory', 'salon'].includes(handle)) {
-            data.instagram = `@${handle}`;
-            data.confidenceFields.push('Instagram Handle');
-            break;
+        // 1. Instagram Handle & Followers
+        const igHandle = extractInstagramHandle(searchHtml, data.companyName);
+        if (igHandle) {
+          data.instagram = igHandle;
+          data.confidenceFields.push('Instagram Handle');
+        }
+
+        const followersCount = extractFollowers(searchHtml);
+        if (followersCount) {
+          data.followers = followersCount;
+          data.confidenceFields.push(followersCount);
+          // If followers found but instagram missing, infer from handle or name
+          if (!data.instagram) {
+            const fallbackIg = extractInstagramHandle(searchHtml, data.companyName);
+            if (fallbackIg) {
+              data.instagram = fallbackIg;
+              data.confidenceFields.push('Instagram Handle');
+            }
           }
         }
 
@@ -684,14 +756,14 @@ export async function POST(req: NextRequest) {
         const fbMatches = [...searchHtml.matchAll(/(?:https?:\/\/)?(?:www\.)?facebook\.com\/(?:p\/|people\/|pages\/)?([a-zA-Z0-9.\-_]{3,50})/gi)];
         for (const m of fbMatches) {
           const id = m[1].toLowerCase();
-          if (!['login', 'share', 'help', 'privacy', 'terms', 'recover', 'dialog'].includes(id)) {
+          if (!['login', 'share', 'help', 'privacy', 'terms', 'recover', 'dialog', 'profile.php', 'sharer.php'].includes(id)) {
             data.facebook = `https://www.facebook.com/${m[1]}`;
             data.confidenceFields.push('Facebook Page');
             break;
           }
         }
 
-        // 4. Primary & Alternate Phone Numbers
+        // 4. Primary & Alternate Phone Numbers from Search
         const { primary, alternate } = extractPhoneNumbers(searchHtml);
         if (primary) {
           data.phone = primary;
@@ -702,33 +774,35 @@ export async function POST(req: NextRequest) {
           data.confidenceFields.push('Alternate Phone');
         }
 
-        // 5. Contact Person / Owner
+        // 5. Contact Person / Owner (Strict validation)
         const owner = extractContactPerson(searchHtml, data.companyName);
         if (owner) {
           data.contactName = owner;
           data.confidenceFields.push(`Owner: ${owner}`);
         }
 
-        // 6. Location / Address
-        const pinMatch = searchHtml.match(/(?:📍|📌)\s*([A-Za-z0-9\s,–-]+?)(?=[|•\n\r"&<]|$)/i);
-        if (pinMatch && pinMatch[1]) {
-          const loc = cleanLocationString(pinMatch[1]);
-          if (loc) {
-            data.location = loc;
-            data.confidenceFields.push('Location');
-          }
-        } else {
-          for (const city of CITIES) {
-            const cityRegex = new RegExp(`(?:in|at|near|location|address)\\s+([A-Za-z0-9\\s,–-]*${city}[A-Za-z0-9\\s,–-]*)`, 'i');
-            const m = searchHtml.match(cityRegex);
-            if (m && m[1]) {
-              const parts = m[1].replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').split(/[,–|•]/).map((p) => p.trim()).filter(Boolean);
-              if (parts.length > 0) {
-                const loc = cleanLocationString(parts.slice(0, 2).join(', '));
-                if (loc) {
-                  data.location = loc;
-                  data.confidenceFields.push('Location');
-                  break;
+        // 6. Location / Address (if not found from Google Maps)
+        if (!data.location) {
+          const pinMatch = searchHtml.match(/(?:📍|📌)\s*([A-Za-z0-9\s,–-]+?)(?=[|•\n\r"&<]|$)/i);
+          if (pinMatch && pinMatch[1]) {
+            const loc = cleanLocationString(pinMatch[1]);
+            if (loc) {
+              data.location = loc;
+              data.confidenceFields.push('Location');
+            }
+          } else {
+            for (const city of CITIES) {
+              const cityRegex = new RegExp(`(?:in|at|near|location|address)\\s+([A-Za-z0-9\\s,–-]*${city}[A-Za-z0-9\\s,–-]*)`, 'i');
+              const m = searchHtml.match(cityRegex);
+              if (m && m[1]) {
+                const parts = m[1].replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').split(/[,–|•]/).map((p) => p.trim()).filter(Boolean);
+                if (parts.length > 0) {
+                  const loc = cleanLocationString(parts.slice(0, 2).join(', '));
+                  if (loc) {
+                    data.location = loc;
+                    data.confidenceFields.push('Location');
+                    break;
+                  }
                 }
               }
             }
@@ -754,25 +828,54 @@ export async function POST(req: NextRequest) {
           }
         }
 
-        // Followers (from Instagram or Social presence)
-        const followerMatch = searchHtml.match(/(\d+(?:\.\d+)?[KkMmB]?|\d{1,3}(?:,\d{3})+)\s+Followers/i);
-        if (followerMatch && followerMatch[0]) {
-          data.followers = followerMatch[0].trim();
-          data.confidenceFields.push(data.followers);
-        }
-
-        // 8. Genuine Business Website
-        const allUrls = [...searchHtml.matchAll(/class="result__url"[^>]*>([^<]+)/gi)].map((m) => m[1].trim());
-        for (const raw of allUrls) {
-          const clean = raw.replace(/^(https?:\/\/)?(www\.)?/, '').split('/')[0].toLowerCase();
-          if (isLikelyCompanyWebsite(clean, data.companyName) && clean.includes('.')) {
-            data.websiteUrl = `https://${clean}`;
-            data.confidenceFields.push('Website URL');
-            break;
+        // 8. If Instagram handle found, fetch Instagram profile directly to get bio website link & followers!
+        if (data.instagram) {
+          const igUser = data.instagram.replace(/^@/, '');
+          const igProfile = await safeFetchHtml(`https://www.instagram.com/${igUser}/`, 3500);
+          if (igProfile && igProfile.html) {
+            const descMatch = igProfile.html.match(/<meta[^>]*property=["']og:description["'][^>]*content=["']([^"']+)["']/i);
+            if (descMatch && descMatch[1]) {
+              const desc = descMatch[1];
+              if (!data.followers) {
+                const fMatch = desc.match(/(\d+(?:\.\d+)?[KkMmB]?|\d{1,3}(?:,\d{3})+)\s+Followers/i);
+                if (fMatch) {
+                  data.followers = fMatch[0].trim();
+                  data.confidenceFields.push(data.followers);
+                }
+              }
+              const webMatch = desc.match(/https?:\/\/[^\s,]+/i);
+              if (webMatch && webMatch[0] && !isDirectoryUrl(webMatch[0])) {
+                data.websiteUrl = webMatch[0];
+                data.confidenceFields.push('Website URL');
+              }
+            }
           }
         }
 
-        // If website found, crawl it for email
+        // 9. Genuine Business Website from Search
+        if (!data.websiteUrl) {
+          const allUrls: string[] = [];
+          for (const m of searchHtml.matchAll(/\/RU=(https?[^/]+)/gi)) {
+            try { allUrls.push(decodeURIComponent(m[1])); } catch {}
+          }
+          for (const m of searchHtml.matchAll(/class="result__url"[^>]*>([^<]+)/gi)) {
+            allUrls.push(m[1].trim());
+          }
+          for (const m of searchHtml.matchAll(/href=["'](https?:\/\/(?:www\.)?[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}[^"']*)["']/gi)) {
+            allUrls.push(m[1]);
+          }
+
+          for (const raw of allUrls) {
+            const clean = raw.replace(/^(https?:\/\/)?(www\.)?/, '').split('/')[0].toLowerCase();
+            if (isLikelyCompanyWebsite(clean, data.companyName) && clean.includes('.') && !isDirectoryUrl(clean)) {
+              data.websiteUrl = `https://${clean}`;
+              data.confidenceFields.push('Website URL');
+              break;
+            }
+          }
+        }
+
+        // 10. If website found, crawl it for Email & direct Phone
         if (data.websiteUrl) {
           const siteData = await scrapeCompanyWebsite(data.websiteUrl);
           if (siteData.email) {
@@ -782,6 +885,22 @@ export async function POST(req: NextRequest) {
           if (siteData.phone && !data.phone) {
             data.phone = siteData.phone;
             data.confidenceFields.push('Primary Phone');
+          }
+          if (siteData.alternatePhone && !data.alternatePhone) {
+            data.alternatePhone = siteData.alternatePhone;
+            data.confidenceFields.push('Alternate Phone');
+          }
+          if (siteData.instagram && !data.instagram) {
+            data.instagram = siteData.instagram;
+            data.confidenceFields.push('Instagram Handle');
+          }
+          if (siteData.linkedin && !data.linkedin) {
+            data.linkedin = siteData.linkedin;
+            data.confidenceFields.push('LinkedIn Profile');
+          }
+          if (siteData.facebook && !data.facebook) {
+            data.facebook = siteData.facebook;
+            data.confidenceFields.push('Facebook Page');
           }
         }
       }
@@ -798,6 +917,8 @@ export async function POST(req: NextRequest) {
         data.suggestedServices = ['AI Voice Agent'];
       }
 
+      // Store in memory cache
+      EXTRACTION_CACHE.set(cacheKey, { data, timestamp: Date.now() });
       return NextResponse.json({ success: true, data });
     }
 
@@ -820,6 +941,10 @@ export async function POST(req: NextRequest) {
       data.phone = siteData.phone;
       data.confidenceFields.push('Primary Phone');
     }
+    if (siteData.alternatePhone) {
+      data.alternatePhone = siteData.alternatePhone;
+      data.confidenceFields.push('Alternate Phone');
+    }
     if (siteData.instagram) {
       data.instagram = siteData.instagram;
       data.confidenceFields.push('Instagram Handle');
@@ -831,6 +956,10 @@ export async function POST(req: NextRequest) {
     if (siteData.twitter) {
       data.twitter = siteData.twitter;
       data.confidenceFields.push('X (Twitter)');
+    }
+    if (siteData.facebook) {
+      data.facebook = siteData.facebook;
+      data.confidenceFields.push('Facebook Page');
     }
 
     if (!data.companyName) {
@@ -854,6 +983,7 @@ export async function POST(req: NextRequest) {
       data.suggestedServices = ['AI Voice Agent'];
     }
 
+    EXTRACTION_CACHE.set(cacheKey, { data, timestamp: Date.now() });
     return NextResponse.json({ success: true, data });
   } catch (err: any) {
     return NextResponse.json({ error: err.message || 'Failed to extract lead data' }, { status: 500 });

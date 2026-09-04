@@ -10,6 +10,7 @@ import {
   OutreachStage,
   ServiceType,
   Note,
+  ActivityLogItem,
   SupabaseConfig,
   TeamMember,
   IntegrationsConfig,
@@ -629,7 +630,28 @@ export function CRMProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     try {
       const savedLeads = localStorage.getItem(STORAGE_KEY_LEADS);
-      if (savedLeads) setRawLeads(JSON.parse(savedLeads));
+      if (savedLeads) {
+        try {
+          const parsed = JSON.parse(savedLeads);
+          if (Array.isArray(parsed)) {
+            const cleaned = parsed.map((l: Lead) => ({
+              ...l,
+              notes: (l.notes || []).filter((n) => {
+                if (!n || !n.content) return false;
+                if (n.type === 'system' || n.author === 'System') return false;
+                if (n.type === 'task') return false;
+                if (n.content.startsWith('Status updated to')) return false;
+                if (n.content.startsWith('Marked as contacted via Cold Queue')) return false;
+                if (n.content.startsWith('Follow-up scheduled for')) return false;
+                if (n.content.startsWith('Follow-up completed on')) return false;
+                if (n.content.startsWith('Demo call scheduled')) return false;
+                return true;
+              }),
+            }));
+            setRawLeads(cleaned);
+          }
+        } catch {}
+      }
 
       const savedProjects = localStorage.getItem(STORAGE_KEY_PROJECTS);
       if (savedProjects) {
@@ -760,8 +782,7 @@ export function CRMProvider({ children }: { children: React.ReactNode }) {
           if (remoteTeamData.teamMembers && remoteTeamData.teamMembers.length > 0) {
             setTeamMembers((prev) => {
               const localMap = new Map(prev.map((m) => [m.id, m]));
-              const remoteIds = new Set(remoteTeamData.teamMembers?.map((m) => m.id));
-              const merged = (remoteTeamData.teamMembers || []).map((rm) => {
+              return (remoteTeamData.teamMembers || []).map((rm) => {
                 const local = localMap.get(rm.id);
                 if (!local) return rm;
                 if (rm.id === activeMemberId) {
@@ -770,15 +791,15 @@ export function CRMProvider({ children }: { children: React.ReactNode }) {
                   return { ...local, ...rm };
                 }
               });
-              const localOnly = prev.filter((m) => !remoteIds.has(m.id));
-              return [...merged, ...localOnly];
             });
           }
           if (remoteTeamData.presence && Array.isArray(remoteTeamData.presence)) {
             setTeamPresence((prev) => {
               const next = { ...prev };
               remoteTeamData.presence?.forEach((p) => {
-                if (p.memberId !== activeMemberId || !next[p.memberId]) {
+                if (p.memberId !== activeMemberId) {
+                  next[p.memberId] = p;
+                } else if (!next[p.memberId]) {
                   next[p.memberId] = p;
                 }
               });
@@ -787,71 +808,40 @@ export function CRMProvider({ children }: { children: React.ReactNode }) {
           }
         }
 
-        if (remoteLeads && remoteLeads.length > 0) {
-          setRawLeads((prevLeads) => {
-            const localMap = new Map(prevLeads.map((l) => [l.id, l]));
-            const remoteIds = new Set(remoteLeads.map((l) => l.id));
-
-            const merged = remoteLeads.map((remoteLead) => {
-              const local = localMap.get(remoteLead.id);
-              if (!local) return remoteLead;
-
-              // Preserve local active follow-up, leadOwner, and notes if local has active data
-              return {
-                ...remoteLead,
-                leadOwner: local.leadOwner || remoteLead.leadOwner || 'Unassigned',
-                activeFollowUp: local.activeFollowUp || remoteLead.activeFollowUp,
-                followUps: (local.followUps && local.followUps.length > (remoteLead.followUps?.length || 0))
-                  ? local.followUps
-                  : (remoteLead.followUps || local.followUps || []),
-                nextFollowUpDate: local.nextFollowUpDate || remoteLead.nextFollowUpDate,
-                bookedMeetingDate: local.bookedMeetingDate || remoteLead.bookedMeetingDate,
-                googleMeetLink: local.googleMeetLink || remoteLead.googleMeetLink,
-                industrySpaceId: local.industrySpaceId || remoteLead.industrySpaceId,
-                notes: (local.notes && local.notes.length > (remoteLead.notes?.length || 0))
-                  ? local.notes
-                  : (remoteLead.notes || local.notes || []),
-              };
-            });
-
-            const localOnly = prevLeads.filter((l) => !remoteIds.has(l.id));
-            return [...merged, ...localOnly];
-          });
+        // Supabase Cloud Database is the Master Source of Truth across all devices
+        if (remoteLeads && Array.isArray(remoteLeads) && remoteLeads.length > 0) {
+          const cleaned = remoteLeads.map((l: Lead) => ({
+            ...l,
+            notes: (l.notes || []).filter((n) => {
+              if (!n || !n.content) return false;
+              if (n.type === 'system' || n.author === 'System') return false;
+              if (n.type === 'task') return false;
+              if (n.content.startsWith('Status updated to')) return false;
+              if (n.content.startsWith('Marked as contacted via Cold Queue')) return false;
+              if (n.content.startsWith('Follow-up scheduled for')) return false;
+              if (n.content.startsWith('Follow-up completed on')) return false;
+              if (n.content.startsWith('Demo call scheduled')) return false;
+              return true;
+            }),
+          }));
+          setRawLeads(cleaned);
         }
 
-        if (remoteProjects && remoteProjects.length > 0) {
-          setRawProjects((prevProjects) => {
-            const localMap = new Map(prevProjects.map((p) => [p.id, p]));
-            const remoteIds = new Set(remoteProjects.map((p) => p.id));
-            const merged = remoteProjects.map((p) => {
-              const local = localMap.get(p.id);
-              return local ? { ...p, milestones: local.milestones?.length ? local.milestones : p.milestones } : p;
-            });
-            const localOnly = prevProjects.filter((p) => !remoteIds.has(p.id));
-            return [...merged, ...localOnly];
-          });
+        if (remoteProjects && Array.isArray(remoteProjects) && remoteProjects.length > 0) {
+          setRawProjects(remoteProjects);
         }
 
-        if (remoteInbound && remoteInbound.length > 0) {
+        if (remoteInbound && Array.isArray(remoteInbound)) {
           const cleanRemote = remoteInbound.filter(
             (s) =>
-              (s.email && s.email.trim().length > 3) ||
-              (s.phone && s.phone.trim().length > 4) ||
-              (s.message && s.message.trim().length > 2) ||
-              (s.name && s.name !== 'Inbound Prospect' && s.name.trim().length > 1)
-          );
-          setInboundSubmissions((prev) => {
-            const cleanPrev = prev.filter(
-              (s) =>
-                (s.email && s.email.trim().length > 3) ||
+              s.name !== '_crm_team_presence_sync' &&
+              s.id !== '00000000-0000-4000-8000-000000000099' &&
+              ((s.email && s.email.trim().length > 3) ||
                 (s.phone && s.phone.trim().length > 4) ||
                 (s.message && s.message.trim().length > 2) ||
-                (s.name && s.name !== 'Inbound Prospect' && s.name.trim().length > 1)
-            );
-            const existingIds = new Set(cleanRemote.map((s) => s.id));
-            const localOnly = cleanPrev.filter((s) => !existingIds.has(s.id));
-            return [...cleanRemote, ...localOnly];
-          });
+                (s.name && s.name !== 'Inbound Prospect' && s.name.trim().length > 1))
+          );
+          setInboundSubmissions(cleanRemote);
         }
       } catch {
         // Silently fallback to local storage
@@ -932,7 +922,7 @@ export function CRMProvider({ children }: { children: React.ReactNode }) {
       }
     };
 
-    // Fast presence sync every 2.5 seconds so teammate status changes appear almost instantly
+    // Fast presence sync so teammate status changes appear almost instantly
     const syncPresenceFast = async () => {
       const envUrl = (supabaseConfig.url || process.env.NEXT_PUBLIC_SUPABASE_URL || '').trim();
       const envKey = (supabaseConfig.anonKey || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '').trim();
@@ -978,8 +968,8 @@ export function CRMProvider({ children }: { children: React.ReactNode }) {
       } catch {}
     };
 
-    // Full CRM database sync every 15s
-    const syncInterval = setInterval(autoSyncFromCloud, 15000);
+    // 5s multi-device database sync loop
+    const syncInterval = setInterval(autoSyncFromCloud, 5000);
     // Real-time presence sync every 2.5s for instant updates
     const presenceInterval = setInterval(syncPresenceFast, 2500);
 
@@ -1108,12 +1098,13 @@ export function CRMProvider({ children }: { children: React.ReactNode }) {
           setRawProjects(remoteProjects);
         }
 
-        if (remoteInbound) {
-          setInboundSubmissions((prev) => {
-            const existingIds = new Set(remoteInbound.map((s) => s.id));
-            const localOnly = prev.filter((s) => !existingIds.has(s.id));
-            return [...remoteInbound, ...localOnly];
-          });
+        if (remoteInbound && Array.isArray(remoteInbound)) {
+          const cleanRemote = remoteInbound.filter(
+            (s) =>
+              s.name !== '_crm_team_presence_sync' &&
+              s.id !== '00000000-0000-4000-8000-000000000099'
+          );
+          setInboundSubmissions(cleanRemote);
         }
         setSupabaseConfig(activeConfig);
         addToast('Synced successfully with Supabase PostgreSQL database!', 'success');
@@ -1191,6 +1182,16 @@ export function CRMProvider({ children }: { children: React.ReactNode }) {
       industrySpaceId: assignedSpaceId,
       industry: leadData.industry || matchedSpace?.name || 'Real Estate & Properties',
       notes: newNotes,
+      activityLogs: [
+        {
+          id: generateUUID(),
+          type: 'created',
+          title: 'Lead Added to Pipeline',
+          description: `Captured via ${leadData.source || 'Direct Outreach'} • Assigned to ${leadData.leadOwner || 'Unassigned'}`,
+          author: leadData.leadOwner || 'Founder',
+          createdAt: now,
+        },
+      ],
       createdAt: now,
       updatedAt: now,
     };
@@ -1208,12 +1209,113 @@ export function CRMProvider({ children }: { children: React.ReactNode }) {
   };
 
   const updateLead = (id: string, updates: Partial<Lead>) => {
+    const targetLead = rawLeads.find((l) => l.id === id);
+    if (!targetLead) return;
+
+    const now = new Date().toISOString();
+    const currentMember = teamMembers.find((m) => m.id === activeMemberId)?.name || targetLead.leadOwner || 'Founder';
+    const newLogs: ActivityLogItem[] = [];
+
+    // Track Company Name change
+    if (updates.companyName && updates.companyName !== targetLead.companyName) {
+      newLogs.push({
+        id: generateUUID(),
+        type: 'field_update',
+        title: 'Company Renamed',
+        description: `Renamed from "${targetLead.companyName}" to "${updates.companyName}"`,
+        previousValue: targetLead.companyName,
+        newValue: updates.companyName,
+        author: currentMember,
+        createdAt: now,
+      });
+    }
+
+    // Track Pipeline Status change
+    if (updates.status && updates.status !== targetLead.status) {
+      newLogs.push({
+        id: generateUUID(),
+        type: 'status_change',
+        title: `Status Changed to ${updates.status}`,
+        description: `Pipeline stage moved from "${targetLead.status}" to "${updates.status}"`,
+        previousValue: targetLead.status,
+        newValue: updates.status,
+        author: currentMember,
+        createdAt: now,
+      });
+    }
+
+    // Track Deal Value change
+    if (updates.dealValue !== undefined && updates.dealValue !== targetLead.dealValue) {
+      newLogs.push({
+        id: generateUUID(),
+        type: 'field_update',
+        title: 'Deal Value Updated',
+        description: `Deal value changed to ${formatCurrency(updates.dealValue, currency)}`,
+        previousValue: String(targetLead.dealValue),
+        newValue: String(updates.dealValue),
+        author: currentMember,
+        createdAt: now,
+      });
+    }
+
+    // Track Reassignment
+    if (updates.leadOwner && updates.leadOwner !== targetLead.leadOwner) {
+      newLogs.push({
+        id: generateUUID(),
+        type: 'reassign',
+        title: 'Lead Reassigned',
+        description: `Owner changed from "${targetLead.leadOwner || 'Unassigned'}" to "${updates.leadOwner}"`,
+        previousValue: targetLead.leadOwner,
+        newValue: updates.leadOwner,
+        author: currentMember,
+        createdAt: now,
+      });
+    }
+
+    // Track Contact Info changes
+    if (updates.phone && updates.phone !== targetLead.phone) {
+      newLogs.push({
+        id: generateUUID(),
+        type: 'field_update',
+        title: 'Phone Number Updated',
+        description: `Phone changed to ${updates.phone}`,
+        author: currentMember,
+        createdAt: now,
+      });
+    }
+
+    if (updates.email && updates.email !== targetLead.email) {
+      newLogs.push({
+        id: generateUUID(),
+        type: 'field_update',
+        title: 'Email Address Updated',
+        description: `Email changed to ${updates.email}`,
+        author: currentMember,
+        createdAt: now,
+      });
+    }
+
+    // Track Meeting Booking
+    if (updates.bookedMeetingDate && updates.bookedMeetingDate !== targetLead.bookedMeetingDate) {
+      newLogs.push({
+        id: generateUUID(),
+        type: 'meeting',
+        title: 'Google Meet Scheduled',
+        description: `Meeting set for ${formatDate(updates.bookedMeetingDate, timezone)}`,
+        author: currentMember,
+        createdAt: now,
+      });
+    }
+
+    const mergedLogs = [...newLogs, ...(updates.activityLogs || targetLead.activityLogs || [])];
+
     const updatedLeads = rawLeads.map((lead) => {
       if (lead.id !== id) return lead;
       return {
         ...lead,
         ...updates,
-        updatedAt: new Date().toISOString(),
+        activityLogs: mergedLogs,
+        updatedAt: now,
       };
     });
     setRawLeads(updatedLeads);
@@ -1250,18 +1352,9 @@ export function CRMProvider({ children }: { children: React.ReactNode }) {
       outreachStage = 'Closed';
     }
 
-    const noteAddition: Note = {
-      id: generateUUID(),
-      content: `Status updated to **${status}** (Stage: ${outreachStage})`,
-      createdAt: new Date().toISOString(),
-      author: 'System',
-      type: 'system',
-    };
-
     updateLead(id, {
       status,
       outreachStage,
-      notes: [noteAddition, ...(targetLead.notes || [])],
     });
 
     if (status === 'Won') {
@@ -1279,19 +1372,10 @@ export function CRMProvider({ children }: { children: React.ReactNode }) {
     if (!lead) return;
 
     const now = new Date().toISOString();
-    const note: Note = {
-      id: generateUUID(),
-      content: `Marked as contacted via Cold Queue.`,
-      createdAt: now,
-      author: lead.leadOwner || 'Agent',
-      type: 'call',
-    };
-
     updateLead(id, {
       status: (lead.status === 'Not Contacted' || lead.status === 'Leads') ? 'Contacted' : lead.status,
       outreachStage: 'Contacted',
       lastContactedAt: now,
-      notes: [note, ...(lead.notes || [])],
     });
 
     addToast(`Marked ${lead.companyName} as Contacted`, 'success');
@@ -1301,17 +1385,7 @@ export function CRMProvider({ children }: { children: React.ReactNode }) {
     const lead = rawLeads.find((l) => l.id === id);
     if (!lead) return;
 
-    const now = new Date().toISOString();
     const randomMeetCode = 'meet.google.com/' + Math.random().toString(36).substring(2, 5) + '-' + Math.random().toString(36).substring(2, 6) + '-ux';
-
-    const note: Note = {
-      id: generateUUID(),
-      content: `Demo call scheduled${dateStr ? ` for ${dateStr}` : ''}. Google Meet: ${randomMeetCode}`,
-      createdAt: now,
-      author: lead.leadOwner || 'Closer',
-      type: 'meeting',
-    };
-
     const bookingDate = dateStr || new Date(Date.now() + 2 * 86400000).toISOString();
 
     updateLead(id, {
@@ -1319,7 +1393,6 @@ export function CRMProvider({ children }: { children: React.ReactNode }) {
       outreachStage: 'Contacted',
       bookedMeetingDate: bookingDate,
       googleMeetLink: `https://${randomMeetCode}`,
-      notes: [note, ...(lead.notes || [])],
     });
 
     addToast(`Booked Demo Call with ${lead.companyName}!`, 'success');
@@ -1334,13 +1407,16 @@ export function CRMProvider({ children }: { children: React.ReactNode }) {
     const lead = rawLeads.find((l) => l.id === leadId);
     if (!lead) return;
 
+    const now = new Date().toISOString();
+    const currentMember = teamMembers.find((m) => m.id === activeMemberId)?.name || lead.leadOwner || 'Founder';
+
     const newFollowUp: FollowUpItem = {
       id: generateUUID(),
       channel,
       scheduledDate,
       note: noteText?.trim() || undefined,
       completed: false,
-      createdAt: new Date().toISOString(),
+      createdAt: now,
     };
 
     const channelLabels: Record<FollowUpChannel, string> = {
@@ -1350,21 +1426,21 @@ export function CRMProvider({ children }: { children: React.ReactNode }) {
       reminder: 'Internal Reminder',
     };
 
-    const noteAddition: Note = {
-      id: generateUUID(),
-      content: `Follow-up scheduled for ${formatDate(scheduledDate)} via ${channelLabels[channel]}${noteText ? `: "${noteText}"` : ''}`,
-      createdAt: new Date().toISOString(),
-      author: lead.leadOwner || 'Agent',
-      type: 'task',
-    };
-
     const updatedFollowUps = [newFollowUp, ...(lead.followUps || [])];
+    const newLog: ActivityLogItem = {
+      id: generateUUID(),
+      type: 'followup',
+      title: `Follow-Up Scheduled (${channelLabels[channel]})`,
+      description: `Due on ${formatDate(scheduledDate, timezone)}${noteText?.trim() ? ` • Note: "${noteText.trim()}"` : ''}`,
+      author: currentMember,
+      createdAt: now,
+    };
 
     updateLead(leadId, {
       activeFollowUp: newFollowUp,
       followUps: updatedFollowUps,
       nextFollowUpDate: scheduledDate,
-      notes: [noteAddition, ...(lead.notes || [])],
+      activityLogs: [newLog, ...(lead.activityLogs || [])],
     });
 
     addToast(`Follow-up scheduled via ${channelLabels[channel]}!`, 'success');
@@ -1375,6 +1451,8 @@ export function CRMProvider({ children }: { children: React.ReactNode }) {
     if (!lead) return;
 
     const now = new Date().toISOString();
+    const currentMember = teamMembers.find((m) => m.id === activeMemberId)?.name || lead.leadOwner || 'Founder';
+
     const updatedFollowUps = (lead.followUps || []).map((f) => {
       if (!followUpId || f.id === followUpId || f.id === lead.activeFollowUp?.id) {
         return { ...f, completed: true, completedAt: now };
@@ -1382,20 +1460,13 @@ export function CRMProvider({ children }: { children: React.ReactNode }) {
       return f;
     });
 
-    const activeChannel = lead.activeFollowUp?.channel || 'reminder';
-    const channelNames: Record<string, string> = {
-      whatsapp: 'WhatsApp',
-      email: 'Email',
-      instagram: 'Instagram DM',
-      reminder: 'Task Reminder',
-    };
-
-    const noteAddition: Note = {
+    const newLog: ActivityLogItem = {
       id: generateUUID(),
-      content: `Follow-up completed on ${channelNames[activeChannel]}.`,
+      type: 'followup',
+      title: 'Follow-Up Marked Completed',
+      description: 'Follow-up touchpoint completed',
+      author: currentMember,
       createdAt: now,
-      author: lead.leadOwner || 'Agent',
-      type: 'task',
     };
 
     updateLead(leadId, {
@@ -1403,7 +1474,7 @@ export function CRMProvider({ children }: { children: React.ReactNode }) {
       followUps: updatedFollowUps,
       nextFollowUpDate: undefined,
       lastContactedAt: now,
-      notes: [noteAddition, ...(lead.notes || [])],
+      activityLogs: [newLog, ...(lead.activityLogs || [])],
     });
 
     addToast('Follow-up marked as completed!', 'success');
@@ -1429,19 +1500,33 @@ export function CRMProvider({ children }: { children: React.ReactNode }) {
     const lead = rawLeads.find((l) => l.id === leadId);
     if (!lead || !content.trim()) return;
 
+    const now = new Date().toISOString();
+    const currentAuthor = teamMembers.find((m) => m.id === activeMemberId)?.name || lead.leadOwner || 'Founder';
+
     const newNote: Note = {
       id: generateUUID(),
       content: content.trim(),
-      createdAt: new Date().toISOString(),
-      author: lead.leadOwner || 'Alex (Founder)',
+      createdAt: now,
+      author: currentAuthor,
       type,
+    };
+
+    const logTitle = type === 'call' ? 'Call Note Logged' : type === 'meeting' ? 'Meeting Note Logged' : 'Team Note Logged';
+    const newLog: ActivityLogItem = {
+      id: generateUUID(),
+      type: 'field_update',
+      title: logTitle,
+      description: content.trim(),
+      author: currentAuthor,
+      createdAt: now,
     };
 
     updateLead(leadId, {
       notes: [newNote, ...(lead.notes || [])],
+      activityLogs: [newLog, ...(lead.activityLogs || [])],
     });
 
-    addToast('Activity logged', 'info');
+    addToast('Note saved', 'success');
   };
 
   const deleteNote = (leadId: string, noteId: string) => {

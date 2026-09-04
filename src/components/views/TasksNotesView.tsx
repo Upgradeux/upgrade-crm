@@ -154,35 +154,44 @@ export function TasksNotesView() {
     }));
 
     const fromLeads: UnifiedNoteItem[] = leads.flatMap((l) =>
-      (l.notes || []).map((noteItem) => ({
-        id: `lead-note-${noteItem.id}`,
-        rawNoteId: noteItem.id,
-        title:
-          noteItem.type === 'call'
-            ? `Call Log: ${l.companyName}`
-            : noteItem.type === 'meeting'
-            ? `Meeting Note: ${l.companyName}`
-            : noteItem.type === 'system'
-            ? `Update: ${l.companyName}`
-            : `Note: ${l.companyName}`,
-        content: noteItem.content,
-        category:
-          noteItem.type === 'call'
-            ? 'Call Logs'
-            : noteItem.type === 'meeting'
-            ? 'Meeting Notes'
-            : noteItem.type === 'system'
-            ? 'System Update'
-            : 'Lead Notes',
-        isPinned: Boolean(noteItem.isPinned),
-        leadId: l.id,
-        leadName: l.companyName,
-        createdAt: noteItem.createdAt,
-        updatedAt: noteItem.createdAt,
-        isLeadLog: true,
-        logType: (noteItem.type || 'note') as 'call' | 'note' | 'meeting' | 'system',
-        author: noteItem.author || l.leadOwner || 'Team Member',
-      }))
+      (l.notes || [])
+        .filter((noteItem) => {
+          if (!noteItem.content || !noteItem.content.trim()) return false;
+          if (noteItem.type === 'system' || noteItem.author === 'System') return false;
+          if (noteItem.type === 'task') return false;
+          return true;
+        })
+        .map((noteItem) => {
+          let categoryName = 'Client Note';
+          let noteTitle = `Note: ${l.companyName}`;
+          let logType: 'call' | 'note' | 'meeting' | 'system' | 'task' = 'note';
+
+          if (noteItem.type === 'call') {
+            categoryName = 'Call Log';
+            noteTitle = `Call Log: ${l.companyName}`;
+            logType = 'call';
+          } else if (noteItem.type === 'meeting') {
+            categoryName = 'Meeting Note';
+            noteTitle = `Meeting: ${l.companyName}`;
+            logType = 'meeting';
+          }
+
+          return {
+            id: `lead-note-${noteItem.id}`,
+            rawNoteId: noteItem.id,
+            title: noteTitle,
+            content: noteItem.content,
+            category: categoryName,
+            isPinned: Boolean(noteItem.isPinned),
+            leadId: l.id,
+            leadName: l.companyName,
+            createdAt: noteItem.createdAt,
+            updatedAt: noteItem.createdAt,
+            isLeadLog: true,
+            logType,
+            author: noteItem.author || l.leadOwner || 'Team Member',
+          };
+        })
     );
 
     return [...standalone, ...fromLeads];
@@ -211,14 +220,12 @@ export function TasksNotesView() {
       all = all.filter((n) => !n.isLeadLog && (n.category === 'General' || n.category === 'Strategy & Ideas'));
     } else if (notesCategoryFilter === 'scripts') {
       all = all.filter((n) => !n.isLeadLog && (n.category === 'Sales Pitch & Scripts' || n.category === 'Standard SOP'));
-    } else if (notesCategoryFilter === 'calls') {
-      all = all.filter((n) => n.isLeadLog && (n.logType === 'call' || n.category === 'Call Logs'));
-    } else if (notesCategoryFilter === 'meetings') {
-      all = all.filter((n) => n.logType === 'meeting' || n.category === 'Meeting Notes' || n.category === 'Client Meeting');
     } else if (notesCategoryFilter === 'lead-notes') {
       all = all.filter((n) => n.isLeadLog && n.logType === 'note');
-    } else if (notesCategoryFilter === 'system') {
-      all = all.filter((n) => n.isLeadLog && n.logType === 'system');
+    } else if (notesCategoryFilter === 'call-logs') {
+      all = all.filter((n) => n.isLeadLog && n.logType === 'call');
+    } else if (notesCategoryFilter === 'meeting-notes') {
+      all = all.filter((n) => n.isLeadLog && n.logType === 'meeting');
     }
 
     // Sort: Pinned first, then newest updated
@@ -236,10 +243,9 @@ export function TasksNotesView() {
       pinned: allUnifiedNotes.filter((n) => n.isPinned).length,
       general: allUnifiedNotes.filter((n) => !n.isLeadLog && (n.category === 'General' || n.category === 'Strategy & Ideas')).length,
       scripts: allUnifiedNotes.filter((n) => !n.isLeadLog && (n.category === 'Sales Pitch & Scripts' || n.category === 'Standard SOP')).length,
-      calls: allUnifiedNotes.filter((n) => n.isLeadLog && (n.logType === 'call' || n.category === 'Call Logs')).length,
-      meetings: allUnifiedNotes.filter((n) => n.logType === 'meeting' || n.category === 'Meeting Notes' || n.category === 'Client Meeting').length,
       leadNotes: allUnifiedNotes.filter((n) => n.isLeadLog && n.logType === 'note').length,
-      system: allUnifiedNotes.filter((n) => n.isLeadLog && n.logType === 'system').length,
+      callLogs: allUnifiedNotes.filter((n) => n.isLeadLog && n.logType === 'call').length,
+      meetingNotes: allUnifiedNotes.filter((n) => n.isLeadLog && n.logType === 'meeting').length,
     };
   }, [allUnifiedNotes]);
 
@@ -599,14 +605,13 @@ export function TasksNotesView() {
           {activeTab === 'notes' && (
             <div className="flex items-center gap-1 overflow-x-auto pb-0.5 sm:pb-0 shrink-0 text-[10.5px]">
               {[
-                { id: 'all', label: 'All', count: noteCategoryCounts.all },
+                { id: 'all', label: 'All Notes', count: noteCategoryCounts.all },
                 { id: 'pinned', label: 'Pinned', count: noteCategoryCounts.pinned, icon: <IconPin size={11} className="text-amber-400" /> },
-                { id: 'general', label: 'General', count: noteCategoryCounts.general },
+                { id: 'general', label: 'General & Ideas', count: noteCategoryCounts.general },
                 { id: 'scripts', label: 'Scripts & SOPs', count: noteCategoryCounts.scripts },
-                { id: 'calls', label: 'Call Logs', count: noteCategoryCounts.calls, icon: <IconPhoneCall size={11} /> },
-                { id: 'meetings', label: 'Meetings', count: noteCategoryCounts.meetings, icon: <IconCalendarEvent size={11} /> },
-                { id: 'lead-notes', label: 'Lead Timeline', count: noteCategoryCounts.leadNotes, icon: <IconBuilding size={11} /> },
-                { id: 'system', label: 'System', count: noteCategoryCounts.system },
+                { id: 'lead-notes', label: 'Client Notes', count: noteCategoryCounts.leadNotes, icon: <IconBuilding size={11} /> },
+                { id: 'call-logs', label: 'Call Logs', count: noteCategoryCounts.callLogs, icon: <IconPhoneCall size={11} className="text-sky-400" /> },
+                { id: 'meeting-notes', label: 'Meeting Notes', count: noteCategoryCounts.meetingNotes, icon: <IconCalendarEvent size={11} className="text-emerald-400" /> },
               ].map((pill) => (
                 <button
                   key={pill.id}

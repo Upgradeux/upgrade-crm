@@ -143,6 +143,17 @@ export interface FollowUpItem {
   createdAt: string;
 }
 
+export interface ActivityLogItem {
+  id: string;
+  type: 'status_change' | 'field_update' | 'stage_move' | 'reassign' | 'created' | 'meeting' | 'followup';
+  title: string;
+  description?: string;
+  previousValue?: string;
+  newValue?: string;
+  author?: string;
+  createdAt: string;
+}
+
 export interface Lead {
   id: string;
   companyName: string;
@@ -167,6 +178,7 @@ export interface Lead {
   industrySpaceId?: string;
   leadOwner: string;
   notes: Note[];
+  activityLogs?: ActivityLogItem[];
   lastContactedAt?: string;
   nextFollowUpDate?: string;
   activeFollowUp?: FollowUpItem;

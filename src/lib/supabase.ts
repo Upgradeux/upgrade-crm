@@ -199,6 +199,7 @@ export async function syncLeadsToSupabase(leads: Lead[], config: SupabaseConfig)
       email: l.email || null,
       socials: {
         ...(l.socials || {}),
+        _activityLogs: l.activityLogs || [],
         _activeFollowUp: l.activeFollowUp || null,
         _followUps: l.followUps || [],
         _nextFollowUpDate: l.nextFollowUpDate || null,
@@ -265,6 +266,7 @@ export async function fetchLeadsFromSupabase(config: SupabaseConfig): Promise<Le
       serviceInterest: d.service_interest,
       leadOwner: d.lead_owner,
       notes: d.notes || [],
+      activityLogs: d.activity_logs || d.socials?._activityLogs || [],
       lastContactedAt: d.last_contacted_at,
       activeFollowUp: d.active_follow_up || d.socials?._activeFollowUp || undefined,
       followUps: d.follow_ups || d.socials?._followUps || [],

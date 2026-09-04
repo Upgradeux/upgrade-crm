@@ -29,6 +29,7 @@ import {
   IconGlobe,
   IconTag,
   IconEdit,
+  IconArrowsExchange,
 } from '@tabler/icons-react';
 import { Button } from '../ui/Button';
 import { Badge } from '../ui/Badge';
@@ -58,6 +59,7 @@ export function LeadDetailDrawer() {
     completeFollowUp,
     deleteFollowUp,
     addTask,
+    tasks,
     teamMembers,
     spaces,
     currency,
@@ -68,7 +70,6 @@ export function LeadDetailDrawer() {
 
   const [noteInput, setNoteInput] = useState('');
   const [noteType, setNoteType] = useState<Note['type']>('call');
-  const [callOutcome, setCallOutcome] = useState<CallOutcome>('Spoke with Decision Maker');
   const [createTaskFromNote, setCreateTaskFromNote] = useState<boolean>(false);
   const [emailMeTask, setEmailMeTask] = useState<boolean>(false);
   const [taskDueDate, setTaskDueDate] = useState<string>(() => {
@@ -79,6 +80,226 @@ export function LeadDetailDrawer() {
   const [taskDueTime, setTaskDueTime] = useState<string>('09:00');
   const [taskPriority, setTaskPriority] = useState<TaskPriority>('high');
   const [activeTab, setActiveTab] = useState<'timeline' | 'details'>('timeline');
+
+  // Dynamically assemble chronological Timeline & Activity stream from all lead lifecycle events, activity logs & notes
+  const timelineItems = React.useMemo(() => {
+    if (!activeLead) return [];
+
+    const items: Array<{
+      id: string;
+      type: 'created' | 'call' | 'meeting' | 'followup' | 'task' | 'note' | 'activity_log';
+      title: string;
+      subtitle?: string;
+      description?: string;
+      timestamp: string;
+      author?: string;
+      badge?: { label: string; colorClass?: string };
+      icon: React.ReactNode;
+      iconBg: string;
+      iconColor: string;
+      noteId?: string;
+      followUpId?: string;
+      followUpCompleted?: boolean;
+      taskId?: string;
+      taskCompleted?: boolean;
+      isNote?: boolean;
+    }> = [];
+
+    // 1. System Activity & Audit Logs (Status updates, renames, reassignment, deal changes, etc.)
+    if (activeLead.activityLogs && activeLead.activityLogs.length > 0) {
+      activeLead.activityLogs.forEach((log) => {
+        let icon = <IconEdit size={13} />;
+        let iconBg = 'bg-slate-500/10 border border-slate-500/20';
+        let iconColor = 'text-slate-300';
+        let badgeColor = 'bg-slate-500/15 text-slate-300 border border-slate-500/30';
+        let badgeLabel = 'Activity';
+
+        if (log.type === 'status_change') {
+          icon = <IconArrowsExchange size={13} />;
+          iconBg = 'bg-blue-500/10 border border-blue-500/20';
+          iconColor = 'text-blue-400';
+          badgeColor = 'bg-blue-500/15 text-blue-400 border border-blue-500/30';
+          badgeLabel = 'Status';
+        } else if (log.type === 'reassign') {
+          icon = <IconUser size={13} />;
+          iconBg = 'bg-purple-500/10 border border-purple-500/20';
+          iconColor = 'text-purple-400';
+          badgeColor = 'bg-purple-500/15 text-purple-400 border border-purple-500/30';
+          badgeLabel = 'Reassigned';
+        } else if (log.type === 'meeting') {
+          icon = <IconVideo size={13} />;
+          iconBg = 'bg-emerald-500/10 border border-emerald-500/20';
+          iconColor = 'text-emerald-400';
+          badgeColor = 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30';
+          badgeLabel = 'Meeting';
+        } else if (log.type === 'followup') {
+          icon = <IconClock size={13} />;
+          iconBg = 'bg-amber-500/10 border border-amber-500/20';
+          iconColor = 'text-amber-400';
+          badgeColor = 'bg-amber-500/15 text-amber-400 border border-amber-500/30';
+          badgeLabel = 'Follow-Up';
+        } else if (log.type === 'created') {
+          icon = <IconSparkles size={13} />;
+          iconBg = 'bg-indigo-500/10 border border-indigo-500/20';
+          iconColor = 'text-indigo-400';
+          badgeColor = 'bg-indigo-500/15 text-indigo-400 border border-indigo-500/30';
+          badgeLabel = 'Created';
+        }
+
+        items.push({
+          id: `log-${log.id}`,
+          type: 'activity_log',
+          title: log.title,
+          subtitle: log.author ? `By ${log.author}` : undefined,
+          description: log.description,
+          timestamp: log.createdAt,
+          author: log.author,
+          badge: {
+            label: badgeLabel,
+            colorClass: badgeColor,
+          },
+          icon,
+          iconBg,
+          iconColor,
+        });
+      });
+    }
+
+    // 2. Fallback Lead Creation (if not in activityLogs)
+    const hasCreationLog = activeLead.activityLogs?.some((l) => l.type === 'created');
+    if (!hasCreationLog && activeLead.createdAt) {
+      items.push({
+        id: `created-${activeLead.id}`,
+        type: 'created',
+        title: 'Lead Added to Pipeline',
+        subtitle: `Captured via ${activeLead.source || 'Direct Outreach'}`,
+        description: `Assigned: ${activeLead.leadOwner || 'Unassigned'} • Initial Deal Value: ${formatCurrency(activeLead.dealValue || 0, currency)}`,
+        timestamp: activeLead.createdAt,
+        badge: {
+          label: activeLead.source || 'New Lead',
+          colorClass: 'bg-indigo-500/15 text-indigo-400 border border-indigo-500/30',
+        },
+        icon: <IconSparkles size={13} />,
+        iconBg: 'bg-indigo-500/10 border border-indigo-500/20',
+        iconColor: 'text-indigo-400',
+      });
+    }
+
+    // 3. Follow-up touchpoints (from followUps array + activeFollowUp)
+    const allFollowUps = [...(activeLead.followUps || [])];
+    if (activeLead.activeFollowUp && !allFollowUps.some((f) => f.id === activeLead.activeFollowUp?.id)) {
+      allFollowUps.push(activeLead.activeFollowUp);
+    }
+
+    allFollowUps.forEach((f) => {
+      const channelLabel = f.channel.toUpperCase();
+      let icon = <IconClock size={13} />;
+      if (f.channel === 'whatsapp') icon = <IconBrandWhatsapp size={13} />;
+      else if (f.channel === 'email') icon = <IconMail size={13} />;
+      else if (f.channel === 'instagram') icon = <IconBrandInstagram size={13} />;
+
+      // Avoid duplicate if already covered by activityLogs
+      if (!items.some((it) => it.id === `log-${f.id}` || it.description?.includes(f.id))) {
+        items.push({
+          id: `followup-${f.id}`,
+          type: 'followup',
+          title: `Follow-Up (${channelLabel}) ${f.completed ? 'Completed' : 'Scheduled'}`,
+          subtitle: `Due: ${formatDate(f.scheduledDate, timezone)}`,
+          description: f.note || (f.completed ? 'Follow-up touchpoint completed' : 'Follow-up touchpoint scheduled'),
+          timestamp: f.completedAt || f.createdAt || f.scheduledDate,
+          followUpId: f.id,
+          followUpCompleted: f.completed,
+          badge: {
+            label: f.completed ? 'Completed' : 'Scheduled',
+            colorClass: f.completed
+              ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30'
+              : 'bg-amber-500/15 text-amber-400 border border-amber-500/30',
+          },
+          icon,
+          iconBg: f.completed
+            ? 'bg-emerald-500/10 border border-emerald-500/20'
+            : 'bg-amber-500/10 border border-amber-500/20',
+          iconColor: f.completed ? 'text-emerald-400' : 'text-amber-400',
+        });
+      }
+    });
+
+    // 4. Linked Workspace Tasks
+    if (tasks && tasks.length > 0) {
+      const leadTasks = tasks.filter((t) => t.leadId === activeLead.id);
+      leadTasks.forEach((t) => {
+        items.push({
+          id: `task-${t.id}`,
+          type: 'task',
+          title: `Task: ${t.title}`,
+          subtitle: `Priority: ${t.priority.toUpperCase()} • Assignee: ${t.assignedTo}`,
+          description: t.description,
+          timestamp: t.completedAt || t.createdAt,
+          taskId: t.id,
+          taskCompleted: t.completed,
+          badge: {
+            label: t.completed ? 'Task Done' : 'Task Pending',
+            colorClass: t.completed
+              ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30'
+              : 'bg-purple-500/15 text-purple-400 border border-purple-500/30',
+          },
+          icon: <IconCheck size={13} />,
+          iconBg: t.completed
+            ? 'bg-emerald-500/10 border border-emerald-500/20'
+            : 'bg-purple-500/10 border border-purple-500/20',
+          iconColor: t.completed ? 'text-emerald-400' : 'text-purple-400',
+        });
+      });
+    }
+
+    // 5. Handwritten / Typed Team Notes (Call Logs, Meeting Notes, General Notes)
+    (activeLead.notes || []).forEach((n) => {
+      let icon = <IconMessageCircle size={13} />;
+      let title = 'General Note';
+      let badgeLabel = 'General Note';
+      let badgeClass = 'bg-indigo-500/15 text-indigo-400 border border-indigo-500/30';
+      let iconBg = 'bg-indigo-500/10 border border-indigo-500/20';
+      let iconColor = 'text-indigo-400';
+
+      if (n.type === 'call') {
+        icon = <IconPhoneCall size={13} />;
+        title = 'Call Log';
+        badgeLabel = 'Call Log';
+        badgeClass = 'bg-sky-500/15 text-sky-400 border border-sky-500/30';
+        iconBg = 'bg-sky-500/10 border border-sky-500/20';
+        iconColor = 'text-sky-400';
+      } else if (n.type === 'meeting') {
+        icon = <IconVideo size={13} />;
+        title = 'Meeting Note';
+        badgeLabel = 'Meeting Note';
+        badgeClass = 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30';
+        iconBg = 'bg-emerald-500/10 border border-emerald-500/20';
+        iconColor = 'text-emerald-400';
+      }
+
+      items.push({
+        id: `note-${n.id}`,
+        type: 'note',
+        isNote: true,
+        noteId: n.id,
+        title,
+        subtitle: `By ${n.author || 'Team Member'}`,
+        description: n.content,
+        timestamp: n.createdAt,
+        author: n.author,
+        badge: {
+          label: badgeLabel,
+          colorClass: badgeClass,
+        },
+        icon,
+        iconBg,
+        iconColor,
+      });
+    });
+
+    // Sort descending by timestamp (newest first)
+    return items.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+  }, [activeLead, tasks, currency, timezone]);
 
   if (!activeLead) return null;
 
@@ -159,11 +380,7 @@ export function LeadDetailDrawer() {
     e.preventDefault();
     if (!noteInput.trim()) return;
 
-    let content = noteInput.trim();
-    if (noteType === 'call') {
-      content = `[Call: ${callOutcome}] ${content}`;
-    }
-
+    const content = noteInput.trim();
     addNote(activeLead.id, content, noteType);
 
     if (createTaskFromNote) {
@@ -179,7 +396,7 @@ export function LeadDetailDrawer() {
         category: noteType === 'call' ? 'Outreach & Calls' : noteType === 'meeting' ? 'Client Work' : 'Internal / Admin',
         dueDate: fullIso,
         dueTime: taskDueTime || '09:00',
-        assignedTo: activeLead.leadOwner || 'Alex (Founder)',
+        assignedTo: activeLead.leadOwner || 'Founder',
         leadId: activeLead.id,
         leadName: activeLead.companyName,
       });
@@ -191,7 +408,7 @@ export function LeadDetailDrawer() {
           body: JSON.stringify({
             to: agencyEmail,
             subject: `[Internal Task / Reminder] ${activeLead.companyName}`,
-            text: `Hi Alex,\n\nYou logged a note and created an internal task for ${activeLead.companyName}:\n\n• Note Type: ${(noteType || 'note').toUpperCase()}\n• Priority: ${taskPriority.toUpperCase()}\n• Due Date: ${taskDueDate} at ${taskDueTime}\n• Client: ${activeLead.companyName} (Phone: ${activeLead.phone || 'N/A'}, Email: ${activeLead.email || 'N/A'})\n• Content:\n${content}\n\nView details inside your agency CRM.`,
+            text: `Hi,\n\nYou logged a note and created an internal task for ${activeLead.companyName}:\n\n• Note Type: ${(noteType || 'note').toUpperCase()}\n• Priority: ${taskPriority.toUpperCase()}\n• Due Date: ${taskDueDate} at ${taskDueTime}\n• Client: ${activeLead.companyName} (Phone: ${activeLead.phone || 'N/A'}, Email: ${activeLead.email || 'N/A'})\n• Content:\n${content}\n\nView details inside your agency CRM.`,
           }),
         }).catch(() => {});
         addToast(`Note saved, task scheduled for ${taskDueDate} & email sent to ${agencyEmail}!`, 'success');
@@ -211,17 +428,6 @@ export function LeadDetailDrawer() {
     setWonLeadForModal(activeLead);
     setIsWonModalOpen(true);
     closeLeadDrawer();
-  };
-
-  const handleLogCallQuick = (outcome: CallOutcome) => {
-    addNote(activeLead.id, `Logged phone call: ${outcome}`, 'call');
-    updateLead(activeLead.id, {
-      lastContactedAt: new Date().toISOString(),
-      callOutcome: outcome,
-      status: (activeLead.status === 'Not Contacted' || activeLead.status === 'Leads') ? 'Contacted' : activeLead.status,
-      outreachStage: 'Contacted',
-    });
-    addToast(`Call logged: ${outcome}`, 'success');
   };
 
   return (
@@ -544,35 +750,15 @@ export function LeadDetailDrawer() {
             </button>
           </div>
 
-          {/* Quick Call Outcomes + Last Contacted */}
-          <div className="flex items-center justify-between gap-1 text-[10.5px]">
-            <div className="flex items-center gap-1">
-              <span className="text-[10px] text-[var(--t-font-color-tertiary)] font-mono mr-0.5">Call:</span>
-              <button
-                onClick={() => handleLogCallQuick('Spoke with Decision Maker')}
-                className="h-[20px] px-1.5 rounded-[3px] bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 text-[10px] font-medium flex items-center gap-1 transition-colors cursor-pointer"
-              >
-                <IconPhoneCall size={10} /> Owner
-              </button>
-              <button
-                onClick={() => handleLogCallQuick('Left Voicemail')}
-                className="h-[20px] px-1.5 rounded-[3px] bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 border border-amber-500/30 text-[10px] font-medium flex items-center gap-1 transition-colors cursor-pointer"
-              >
-                Voicemail
-              </button>
-              <button
-                onClick={() => handleLogCallQuick('Spoke with Gatekeeper')}
-                className="h-[20px] px-1.5 rounded-[3px] bg-sky-500/10 hover:bg-sky-500/20 text-sky-400 border border-sky-500/30 text-[10px] font-medium flex items-center gap-1 transition-colors cursor-pointer"
-              >
-                Gatekeeper
-              </button>
+          {/* Last Outreach Indicator (if contacted) */}
+          {activeLead.lastContactedAt && (
+            <div className="flex items-center justify-end text-[10px] text-[var(--t-font-color-tertiary)] font-mono pt-0.5">
+              <span className="flex items-center gap-1">
+                <IconClock size={11} />
+                <span>Last outreach: {formatRelativeTime(activeLead.lastContactedAt)}</span>
+              </span>
             </div>
-
-            <div className="flex items-center gap-1 text-[10px] text-[var(--t-font-color-tertiary)] font-mono shrink-0">
-              <IconClock size={11} />
-              <span>{formatRelativeTime(activeLead.lastContactedAt)}</span>
-            </div>
-          </div>
+          )}
 
           {/* Active Booked Meeting & Google Meet Banner */}
           {activeLead.bookedMeetingDate && activeLead.googleMeetLink && (
@@ -618,7 +804,7 @@ export function LeadDetailDrawer() {
                   : 'text-[var(--t-font-color-tertiary)] hover:text-[var(--t-font-color-secondary)]'
               }`}
             >
-              Activity & Notes ({activeLead.notes?.length || 0})
+              Activity & Notes ({timelineItems.length})
             </button>
             <button
               onClick={() => setActiveTab('details')}
@@ -790,44 +976,99 @@ export function LeadDetailDrawer() {
               </div>
             </form>
 
-            {/* Notes & Activity List */}
-            <div className="space-y-1.5">
-              <div className="text-[10px] font-semibold text-[var(--t-font-color-tertiary)] uppercase tracking-wider px-0.5">
-                Timeline & Activity
+            {/* Twenty Style Clean Minimal Vertical Activity Stream */}
+            <div className="pt-2 space-y-2">
+              <div className="flex items-center justify-between text-[10px] font-semibold text-[var(--t-font-color-tertiary)] uppercase tracking-wider px-1">
+                <span>Activity & History</span>
+                <span className="font-mono text-[9.5px] text-[var(--t-font-color-tertiary)]">
+                  {timelineItems.length} {timelineItems.length === 1 ? 'event' : 'events'}
+                </span>
               </div>
 
-              {activeLead.notes?.map((n) => (
-                <div
-                  key={n.id}
-                  className="p-2.5 rounded-[5px] bg-[var(--t-background-secondary)] border border-[var(--t-border-color-light)] space-y-1 text-[11.5px] group"
-                >
-                  <div className="flex items-center justify-between text-[10px] text-[var(--t-font-color-tertiary)]">
-                    <div className="flex items-center gap-1.5">
-                      <span className="font-medium text-[var(--t-font-color-secondary)]">
-                        {n.author}
-                      </span>
-                      <span>•</span>
-                      <span className="font-mono">{formatDate(n.createdAt, timezone)}</span>
-                    </div>
-                    <button
-                      onClick={() => deleteNote(activeLead.id, n.id)}
-                      className="opacity-0 group-hover:opacity-100 text-[var(--t-font-color-tertiary)] hover:text-rose-500 p-0.5 cursor-pointer"
-                      title="Delete note"
+              {/* Continuous Timeline with Spine */}
+              <div className="relative pl-6 space-y-3.5 pt-1 before:absolute before:left-2.5 before:top-2.5 before:bottom-2 before:w-[1px] before:bg-[var(--t-border-color-light)]">
+                {timelineItems.map((item) => (
+                  <div key={item.id} className="relative group text-[11.5px]">
+                    {/* Node Icon on Spine */}
+                    <div
+                      className={`absolute -left-6 top-0.5 w-[20px] h-[20px] rounded-full flex items-center justify-center bg-[var(--t-background-primary)] border text-[10.5px] z-10 ${item.iconBg} ${item.iconColor}`}
                     >
-                      <IconTrash size={11} />
-                    </button>
-                  </div>
-                  <p className="text-[var(--t-font-color-primary)] leading-relaxed whitespace-pre-wrap text-[11px]">
-                    {n.content}
-                  </p>
-                </div>
-              ))}
+                      {item.icon}
+                    </div>
 
-              {(!activeLead.notes || activeLead.notes.length === 0) && (
-                <div className="p-4 text-center text-[10.5px] text-[var(--t-font-color-tertiary)] font-mono">
-                  No activity logs yet.
-                </div>
-              )}
+                    {/* Content */}
+                    <div className="min-w-0 space-y-1">
+                      {/* Top Header Row */}
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-1.5 flex-wrap min-w-0">
+                          {item.author && (
+                            <span className="font-semibold text-[var(--t-font-color-primary)] text-[11px]">
+                              {item.author}
+                            </span>
+                          )}
+                          <span className="text-[11px] text-[var(--t-font-color-secondary)]">
+                            {item.title}
+                          </span>
+                          {item.badge && (
+                            <span className={`text-[9px] font-medium px-1.5 py-0.2 rounded ${item.badge.colorClass}`}>
+                              {item.badge.label}
+                            </span>
+                          )}
+                        </div>
+
+                        {/* Timestamp & Quick Action */}
+                        <div className="flex items-center gap-1.5 shrink-0 text-[10px] text-[var(--t-font-color-tertiary)]">
+                          <span className="font-mono text-[9.5px]" title={formatDate(item.timestamp, timezone)}>
+                            {formatRelativeTime(item.timestamp)}
+                          </span>
+
+                          {/* Delete note button on hover */}
+                          {item.isNote && item.noteId && (
+                            <button
+                              onClick={() => deleteNote(activeLead.id, item.noteId!)}
+                              className="opacity-0 group-hover:opacity-100 text-[var(--t-font-color-tertiary)] hover:text-rose-500 p-0.5 transition-opacity cursor-pointer"
+                              title="Delete note"
+                            >
+                              <IconTrash size={11} />
+                            </button>
+                          )}
+
+                          {/* Follow up complete action */}
+                          {item.type === 'followup' && item.followUpId && !item.followUpCompleted && (
+                            <button
+                              onClick={() => completeFollowUp(activeLead.id, item.followUpId)}
+                              className="h-[18px] px-1.5 rounded-[3px] bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 text-[9.5px] font-medium flex items-center gap-0.5 cursor-pointer"
+                              title="Mark as completed"
+                            >
+                              <IconCheck size={9} />
+                              <span>Done</span>
+                            </button>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Description / Note Bubble */}
+                      {item.description && (
+                        <div
+                          className={`text-[11px] leading-relaxed whitespace-pre-wrap ${
+                            item.isNote
+                              ? 'p-2 rounded-[5px] bg-[var(--t-background-secondary)] border border-[var(--t-border-color-light)] text-[var(--t-font-color-primary)]'
+                              : 'text-[var(--t-font-color-tertiary)] text-[10.5px]'
+                          }`}
+                        >
+                          {item.description}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                ))}
+
+                {timelineItems.length === 0 && (
+                  <div className="py-6 text-center text-[10.5px] text-[var(--t-font-color-tertiary)] font-mono">
+                    No activity logs yet.
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         )}

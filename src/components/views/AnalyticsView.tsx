@@ -45,11 +45,15 @@ export function AnalyticsView() {
 
   // 1. Service Breakdown Data for Bar Chart
   const serviceTypes: ServiceType[] = [
-    'AI Voice Agent',
     'Web Development',
-    'Workflow / n8n Automation',
+    'AI Voice Agent',
+    'AI Automation',
+    'Google Business Profile',
+    'Meta Ads',
     'AI Chatbot',
+    'Workflow / n8n Automation',
     'Monthly Retainer',
+    'Lead Generation',
   ];
 
   const serviceChartData = serviceTypes.map((st) => {

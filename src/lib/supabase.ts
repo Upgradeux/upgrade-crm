@@ -1,4 +1,4 @@
-import { Lead, Project, InboundSubmission, SupabaseConfig, TeamMember, TeamPresenceRecord, CRMTask, CRMNote, IndustrySpace } from '@/types/crm';
+import { Lead, Project, InboundSubmission, SupabaseConfig, TeamMember, TeamPresenceRecord, CRMTask, CRMNote, IndustrySpace, ServiceType } from '@/types/crm';
 
 export const SUPABASE_SQL_SCHEMA = `-- ============================================================================
 -- SUPABASE DATABASE SCHEMA FOR WEB & AI AGENCY CRM
@@ -199,6 +199,15 @@ export async function syncLeadsToSupabase(leads: Lead[], config: SupabaseConfig)
       email: l.email || null,
       socials: {
         ...(l.socials || {}),
+        _services: Array.isArray(l.services) && l.services.length > 0
+          ? l.services
+          : [l.serviceInterest || 'Web Development'],
+        _source: l.source || 'Google Maps',
+        _callOutcome: l.callOutcome || 'Not Called',
+        _alternatePhone: l.alternatePhone || null,
+        _industrySpaceId: l.industrySpaceId || 'all',
+        _industry: l.industry || null,
+        _mapsUrl: l.mapsUrl || null,
         _activityLogs: l.activityLogs || [],
         _activeFollowUp: l.activeFollowUp || null,
         _followUps: l.followUps || [],
@@ -212,7 +221,7 @@ export async function syncLeadsToSupabase(leads: Lead[], config: SupabaseConfig)
       status: l.status,
       outreach_stage: l.outreachStage,
       deal_value: l.dealValue || 0,
-      service_interest: l.serviceInterest,
+      service_interest: l.serviceInterest || (Array.isArray(l.services) && l.services[0]) || 'Web Development',
       lead_owner: l.leadOwner || 'Alex Rivera',
       notes: l.notes || [],
       last_contacted_at: l.lastContactedAt || null,
@@ -253,35 +262,53 @@ export async function fetchLeadsFromSupabase(config: SupabaseConfig): Promise<Le
     const data = await res.json().catch(() => null);
     if (!Array.isArray(data)) return null;
 
-    return data.map((d: any) => ({
-      id: d.id,
-      companyName: d.company_name,
-      contactName: d.contact_name,
-      websiteUrl: d.website_url,
-      location: d.location,
-      phone: d.phone,
-      email: d.email,
-      socials: d.socials || {},
-      source: d.source || 'Google Maps',
-      status: d.status,
-      outreachStage: d.outreach_stage,
-      dealValue: Number(d.deal_value) || 0,
-      serviceInterest: d.service_interest,
-      leadOwner: d.lead_owner,
-      notes: d.notes || [],
-      activityLogs: d.activity_logs || d.socials?._activityLogs || [],
-      lastContactedAt: d.last_contacted_at,
-      activeFollowUp: d.active_follow_up || d.socials?._activeFollowUp || undefined,
-      followUps: d.follow_ups || d.socials?._followUps || [],
-      nextFollowUpDate: d.next_follow_up_date || d.socials?._nextFollowUpDate || undefined,
-      bookedMeetingDate: d.booked_meeting_date || d.socials?._bookedMeetingDate || undefined,
-      googleMeetLink: d.google_meet_link || d.socials?._googleMeetLink || undefined,
-      rating: d.rating || d.socials?._rating || undefined,
-      reviewCount: d.review_count || d.socials?._reviewCount || undefined,
-      followers: d.followers || d.socials?._followers || undefined,
-      createdAt: d.created_at,
-      updatedAt: d.updated_at,
-    }));
+    return data.map((d: any) => {
+      const primaryService = (d.service_interest as ServiceType) || 
+        (Array.isArray(d.socials?._services) && d.socials._services[0] as ServiceType) || 
+        'Web Development';
+
+      const allServices: ServiceType[] = Array.isArray(d.services) && d.services.length > 0
+        ? d.services
+        : (Array.isArray(d.socials?._services) && d.socials._services.length > 0
+          ? d.socials._services
+          : [primaryService]);
+
+      return {
+        id: d.id,
+        companyName: d.company_name,
+        contactName: d.contact_name,
+        websiteUrl: d.website_url,
+        location: d.location,
+        phone: d.phone,
+        email: d.email,
+        socials: d.socials || {},
+        source: d.source || d.socials?._source || 'Google Maps',
+        callOutcome: d.call_outcome || d.socials?._callOutcome || 'Not Called',
+        alternatePhone: d.alternate_phone || d.socials?._alternatePhone || undefined,
+        mapsUrl: d.maps_url || d.socials?._mapsUrl || d.socials?.maps || undefined,
+        industrySpaceId: d.industry_space_id || d.socials?._industrySpaceId || 'all',
+        industry: d.industry || d.socials?._industry || undefined,
+        status: d.status,
+        outreachStage: d.outreach_stage,
+        dealValue: Number(d.deal_value) || 0,
+        serviceInterest: primaryService,
+        services: allServices,
+        leadOwner: d.lead_owner,
+        notes: d.notes || [],
+        activityLogs: d.activity_logs || d.socials?._activityLogs || [],
+        lastContactedAt: d.last_contacted_at,
+        activeFollowUp: d.active_follow_up || d.socials?._activeFollowUp || undefined,
+        followUps: d.follow_ups || d.socials?._followUps || [],
+        nextFollowUpDate: d.next_follow_up_date || d.socials?._nextFollowUpDate || undefined,
+        bookedMeetingDate: d.booked_meeting_date || d.socials?._bookedMeetingDate || undefined,
+        googleMeetLink: d.google_meet_link || d.socials?._googleMeetLink || undefined,
+        rating: d.rating || d.socials?._rating || undefined,
+        reviewCount: d.review_count || d.socials?._reviewCount || undefined,
+        followers: d.followers || d.socials?._followers || undefined,
+        createdAt: d.created_at,
+        updatedAt: d.updated_at,
+      };
+    });
   } catch {
     return null;
   }
@@ -524,6 +551,86 @@ export async function clearAllInboundSubmissionsFromSupabase(
         apikey: config.anonKey,
         Authorization: `Bearer ${config.anonKey}`,
       },
+    });
+
+    return Boolean(res && res.ok);
+  } catch {
+    return false;
+  }
+}
+
+export async function updateLeadInSupabase(
+  id: string,
+  updates: Partial<Lead>,
+  config: SupabaseConfig,
+  currentSocials?: any
+): Promise<boolean> {
+  if (!config.isConnected || !config.url || !config.anonKey) return false;
+  try {
+    const cleanUrl = config.url.replace(/\/+$/, '');
+    const validId = ensureValidUuid(id);
+    const patchBody: any = {
+      updated_at: new Date().toISOString(),
+    };
+
+    if (updates.companyName !== undefined) patchBody.company_name = updates.companyName;
+    if (updates.contactName !== undefined) patchBody.contact_name = updates.contactName || null;
+    if (updates.websiteUrl !== undefined) patchBody.website_url = updates.websiteUrl || null;
+    if (updates.location !== undefined) patchBody.location = updates.location || null;
+    if (updates.phone !== undefined) patchBody.phone = updates.phone || null;
+    if (updates.email !== undefined) patchBody.email = updates.email || null;
+    if (updates.status !== undefined) patchBody.status = updates.status;
+    if (updates.outreachStage !== undefined) patchBody.outreach_stage = updates.outreachStage;
+    if (updates.dealValue !== undefined) patchBody.deal_value = updates.dealValue;
+    if (updates.serviceInterest !== undefined) patchBody.service_interest = updates.serviceInterest;
+    if (updates.leadOwner !== undefined) patchBody.lead_owner = updates.leadOwner;
+    if (updates.notes !== undefined) patchBody.notes = updates.notes;
+    if (updates.lastContactedAt !== undefined) patchBody.last_contacted_at = updates.lastContactedAt;
+
+    // Handle socials object & extended properties
+    const baseSocials = {
+      ...(currentSocials || {}),
+      ...(updates.socials || {}),
+    };
+
+    if (updates.services !== undefined) {
+      baseSocials._services = updates.services;
+      if (!patchBody.service_interest && updates.services.length > 0) {
+        patchBody.service_interest = updates.services[0];
+      }
+    }
+    if (updates.serviceInterest !== undefined && !baseSocials._services) {
+      baseSocials._services = [updates.serviceInterest];
+    }
+    if (updates.source !== undefined) baseSocials._source = updates.source;
+    if (updates.callOutcome !== undefined) baseSocials._callOutcome = updates.callOutcome;
+    if (updates.alternatePhone !== undefined) baseSocials._alternatePhone = updates.alternatePhone;
+    if (updates.industrySpaceId !== undefined) baseSocials._industrySpaceId = updates.industrySpaceId;
+    if (updates.industry !== undefined) baseSocials._industry = updates.industry;
+    if (updates.mapsUrl !== undefined) {
+      baseSocials._mapsUrl = updates.mapsUrl;
+      baseSocials.maps = updates.mapsUrl;
+    }
+    if (updates.rating !== undefined) baseSocials._rating = updates.rating;
+    if (updates.reviewCount !== undefined) baseSocials._reviewCount = updates.reviewCount;
+    if (updates.followers !== undefined) baseSocials._followers = updates.followers;
+    if (updates.activityLogs !== undefined) baseSocials._activityLogs = updates.activityLogs;
+    if (updates.activeFollowUp !== undefined) baseSocials._activeFollowUp = updates.activeFollowUp;
+    if (updates.followUps !== undefined) baseSocials._followUps = updates.followUps;
+    if (updates.nextFollowUpDate !== undefined) baseSocials._nextFollowUpDate = updates.nextFollowUpDate;
+    if (updates.bookedMeetingDate !== undefined) baseSocials._bookedMeetingDate = updates.bookedMeetingDate;
+    if (updates.googleMeetLink !== undefined) baseSocials._googleMeetLink = updates.googleMeetLink;
+
+    patchBody.socials = baseSocials;
+
+    const res = await safeSupabaseFetch(`${cleanUrl}/rest/v1/leads?id=eq.${encodeURIComponent(validId)}`, {
+      method: 'PATCH',
+      headers: {
+        apikey: config.anonKey,
+        Authorization: `Bearer ${config.anonKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(patchBody),
     });
 
     return Boolean(res && res.ok);

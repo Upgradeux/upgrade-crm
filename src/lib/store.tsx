@@ -51,6 +51,7 @@ import {
   fetchTeamPresenceFromSupabase,
   syncWorkspaceMetaToSupabase,
   fetchWorkspaceMetaFromSupabase,
+  updateLeadInSupabase,
 } from './supabase';
 
 interface Toast {
@@ -1073,10 +1074,17 @@ export function CRMProvider({ children }: { children: React.ReactNode }) {
     const assignedSpaceId = leadData.industrySpaceId || (activeSpaceId !== 'all' ? activeSpaceId : 'real-estate');
     const matchedSpace = spaces.find((s) => s.id === assignedSpaceId);
 
+    const assignedServices = leadData.services && leadData.services.length > 0
+      ? leadData.services
+      : [leadData.serviceInterest || 'Web Development'];
+    const assignedPrimaryService = leadData.serviceInterest || assignedServices[0] || 'Web Development';
+
     const newLead: Lead = {
       ...leadData,
       id,
       status: leadData.status || 'Leads',
+      serviceInterest: assignedPrimaryService,
+      services: assignedServices,
       industrySpaceId: assignedSpaceId,
       industry: leadData.industry || matchedSpace?.name || 'Real Estate & Properties',
       notes: newNotes,
@@ -1113,6 +1121,21 @@ export function CRMProvider({ children }: { children: React.ReactNode }) {
     const now = new Date().toISOString();
     const currentMember = teamMembers.find((m) => m.id === activeMemberId)?.name || targetLead.leadOwner || 'Founder';
     const newLogs: ActivityLogItem[] = [];
+
+    // Harmonize services and serviceInterest
+    const harmonizedUpdates = { ...updates };
+    if (harmonizedUpdates.serviceInterest && !harmonizedUpdates.services) {
+      const existing = targetLead.services || [targetLead.serviceInterest];
+      if (!existing.includes(harmonizedUpdates.serviceInterest)) {
+        harmonizedUpdates.services = [
+          harmonizedUpdates.serviceInterest,
+          ...existing.filter((s) => s !== harmonizedUpdates.serviceInterest),
+        ];
+      }
+    }
+    if (harmonizedUpdates.services && harmonizedUpdates.services.length > 0 && !harmonizedUpdates.serviceInterest) {
+      harmonizedUpdates.serviceInterest = harmonizedUpdates.services[0];
+    }
 
     // Track Company Name change
     if (updates.companyName && updates.companyName !== targetLead.companyName) {
@@ -1211,7 +1234,7 @@ export function CRMProvider({ children }: { children: React.ReactNode }) {
       if (lead.id !== id) return lead;
       return {
         ...lead,
-        ...updates,
+        ...harmonizedUpdates,
         activityLogs: mergedLogs,
         updatedAt: now,
       };
@@ -1221,6 +1244,7 @@ export function CRMProvider({ children }: { children: React.ReactNode }) {
     const envUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || supabaseConfig.url;
     const envKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || supabaseConfig.anonKey;
     if (envUrl && envKey) {
+      updateLeadInSupabase(id, harmonizedUpdates, { url: envUrl, anonKey: envKey, isConnected: true }, targetLead.socials);
       syncLeadsToSupabase(updatedLeads, { url: envUrl, anonKey: envKey, isConnected: true });
     }
   };

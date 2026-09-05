@@ -71,11 +71,15 @@ export function AllLeadsView() {
 
   const serviceFilterOptions = [
     { value: 'All', label: 'All Services' },
-    { value: 'AI Voice Agent', label: 'AI Voice Agent' },
     { value: 'Web Development', label: 'Web Development' },
-    { value: 'Workflow / n8n Automation', label: 'Workflow Auto' },
+    { value: 'AI Voice Agent', label: 'AI Voice Agent' },
+    { value: 'AI Automation', label: 'AI Automation' },
+    { value: 'Google Business Profile', label: 'Google Business Profile' },
+    { value: 'Meta Ads', label: 'Meta Ads' },
     { value: 'AI Chatbot', label: 'AI Chatbot' },
-    { value: 'Monthly Retainer', label: 'Retainer' },
+    { value: 'Workflow / n8n Automation', label: 'Workflow Automation' },
+    { value: 'Monthly Retainer', label: 'Monthly Retainer' },
+    { value: 'Lead Generation', label: 'Lead Generation' },
   ];
 
   const filteredLeads = useMemo(() => {

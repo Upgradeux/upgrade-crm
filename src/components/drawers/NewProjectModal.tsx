@@ -50,9 +50,13 @@ export function NewProjectModal() {
   const serviceOptions = [
     { value: 'Web Development', label: 'Web Development' },
     { value: 'AI Voice Agent', label: 'AI Voice Agent' },
-    { value: 'Workflow / n8n Automation', label: 'Workflow Automation' },
+    { value: 'AI Automation', label: 'AI Automation' },
+    { value: 'Google Business Profile', label: 'Google Business Profile' },
+    { value: 'Meta Ads', label: 'Meta Ads' },
     { value: 'AI Chatbot', label: 'AI Chatbot' },
+    { value: 'Workflow / n8n Automation', label: 'Workflow Automation' },
     { value: 'Monthly Retainer', label: 'Monthly Retainer' },
+    { value: 'Lead Generation', label: 'Lead Generation' },
   ];
 
   const statusOptions = [

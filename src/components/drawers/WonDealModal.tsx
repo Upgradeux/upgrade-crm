@@ -20,11 +20,15 @@ export function WonDealModal() {
   const [status, setStatus] = useState<ProjectStatus>('In Build');
 
   const serviceOptions = [
-    { value: 'AI Voice Agent', label: 'AI Voice Agent' },
     { value: 'Web Development', label: 'Web Development' },
-    { value: 'Workflow / n8n Automation', label: 'Workflow Automation' },
+    { value: 'AI Voice Agent', label: 'AI Voice Agent' },
+    { value: 'AI Automation', label: 'AI Automation' },
+    { value: 'Google Business Profile', label: 'Google Business Profile' },
+    { value: 'Meta Ads', label: 'Meta Ads' },
     { value: 'AI Chatbot', label: 'AI Chatbot' },
+    { value: 'Workflow / n8n Automation', label: 'Workflow Automation' },
     { value: 'Monthly Retainer', label: 'Monthly Retainer' },
+    { value: 'Lead Generation', label: 'Lead Generation' },
   ];
 
   const statusOptions = [

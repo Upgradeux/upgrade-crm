@@ -86,9 +86,14 @@ export function NewLeadModal() {
       const exists = prev.includes(svc);
       const updated = exists ? prev.filter((s) => s !== svc) : [...prev, svc];
       if (updated.length > 0) {
-        setServiceInterest(updated[0]);
+        if (!updated.includes(serviceInterest)) {
+          setServiceInterest(updated[0]);
+        }
+        return updated;
+      } else {
+        setServiceInterest(svc);
+        return [svc];
       }
-      return updated;
     });
   };
 
@@ -151,6 +156,8 @@ export function NewLeadModal() {
     { value: 'Lost', label: 'Lost' },
     { value: 'Won', label: 'Won Deal' },
   ];
+
+  const serviceOptions = AVAILABLE_SERVICES.map((s) => ({ value: s, label: s }));
 
   const handleExtractLead = async () => {
     if (!autoFillUrl.trim()) return;
@@ -512,34 +519,53 @@ export function NewLeadModal() {
           </div>
         </div>
 
-        {/* Pipeline Stage */}
-        <div>
-          <label className="text-[11px] font-medium text-[var(--t-font-color-secondary)] block mb-1">
-            Pipeline Stage
-          </label>
-          <Dropdown
-            value={status}
-            onChange={(val) => {
-              const s = val as LeadStatus;
-              setStatus(s);
-              if (s === 'Leads' || s === 'Not Contacted') setOutreachStage('Needs Outreach');
-              else if (s === 'Contacted' || s === 'Booked Meeting' || s === 'Booked Call' || s === 'Proposal Sent' || s === 'In Processing / Proposal') {
-                setOutreachStage('Contacted');
-              } else {
-                setOutreachStage('Closed');
-              }
-            }}
-            options={statusOptions}
-            size="sm"
-            buttonClassName="h-[28px] text-[11.5px] bg-[var(--t-background-primary)]"
-          />
+        {/* Primary Service & Pipeline Stage */}
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="text-[11px] font-medium text-[var(--t-font-color-secondary)] block mb-1">
+              Service to Pitch (Primary)
+            </label>
+            <Dropdown
+              value={serviceInterest}
+              onChange={(val) => {
+                const svc = val as ServiceType;
+                setServiceInterest(svc);
+                setSelectedServices((prev) => (prev.includes(svc) ? prev : [svc, ...prev]));
+              }}
+              options={serviceOptions}
+              size="sm"
+              buttonClassName="h-[28px] text-[11.5px] bg-[var(--t-background-primary)]"
+            />
+          </div>
+
+          <div>
+            <label className="text-[11px] font-medium text-[var(--t-font-color-secondary)] block mb-1">
+              Pipeline Stage
+            </label>
+            <Dropdown
+              value={status}
+              onChange={(val) => {
+                const s = val as LeadStatus;
+                setStatus(s);
+                if (s === 'Leads' || s === 'Not Contacted') setOutreachStage('Needs Outreach');
+                else if (s === 'Contacted' || s === 'Booked Meeting' || s === 'Booked Call' || s === 'Proposal Sent' || s === 'In Processing / Proposal') {
+                  setOutreachStage('Contacted');
+                } else {
+                  setOutreachStage('Closed');
+                }
+              }}
+              options={statusOptions}
+              size="sm"
+              buttonClassName="h-[28px] text-[11.5px] bg-[var(--t-background-primary)]"
+            />
+          </div>
         </div>
 
         {/* Multi-Service Pitch Selection */}
         <div className="p-2 rounded-[6px] bg-[var(--t-background-secondary)] border border-[var(--t-border-color-light)] space-y-1">
           <div className="flex items-center justify-between">
             <label className="text-[10.5px] font-medium text-[var(--t-font-color-secondary)]">
-              Pitch Scope <span className="text-[9.5px] text-[var(--t-font-color-tertiary)]">(Click to Toggle)</span>
+              Pitch Scope <span className="text-[9.5px] text-[var(--t-font-color-tertiary)]">(Select all services pitching in this deal)</span>
             </label>
             <span className="text-[9.5px] text-[#5d4ef7] font-mono font-medium">
               {selectedServices.length} Selected
@@ -549,6 +575,7 @@ export function NewLeadModal() {
           <div className="flex flex-wrap gap-1 pt-0.5">
             {AVAILABLE_SERVICES.map((svc) => {
               const isSelected = selectedServices.includes(svc);
+              const isPrimary = svc === serviceInterest;
               return (
                 <button
                   key={svc}
@@ -562,6 +589,11 @@ export function NewLeadModal() {
                 >
                   {isSelected && <IconCheck size={10} className="text-[#5d4ef7] shrink-0" />}
                   <span>{svc}</span>
+                  {isPrimary && (
+                    <span className="text-[8px] px-1 py-0.2 rounded bg-[#5d4ef7] text-white uppercase font-bold tracking-wider">
+                      Primary
+                    </span>
+                  )}
                 </button>
               );
             })}

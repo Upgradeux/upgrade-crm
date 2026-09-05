@@ -1398,12 +1398,39 @@ export function LeadDetailDrawer() {
                 </div>
               </div>
 
+              {/* Property: Primary Service to Pitch */}
+              <div className="grid grid-cols-12 items-center px-3 py-1 hover:bg-[var(--t-background-primary)] transition-colors">
+                <div className="col-span-4 flex items-center gap-1.5 text-[11px] text-[var(--t-font-color-tertiary)]">
+                  <IconBuilding size={12} className="shrink-0 text-indigo-400" />
+                  <span>Primary Service</span>
+                </div>
+                <div className="col-span-8">
+                  <Dropdown
+                    value={activeLead.serviceInterest || 'Web Development'}
+                    onChange={(val) => {
+                      const newSvc = val as ServiceType;
+                      const currentServices = activeLead.services || [activeLead.serviceInterest || 'Web Development'];
+                      const updatedServices = currentServices.includes(newSvc)
+                        ? currentServices
+                        : [newSvc, ...currentServices];
+                      updateLead(activeLead.id, {
+                        serviceInterest: newSvc,
+                        services: updatedServices,
+                      });
+                    }}
+                    options={serviceOptions}
+                    size="sm"
+                    buttonClassName="h-[24px] px-1 text-[11px] bg-transparent border-transparent hover:border-[var(--t-border-color-light)] focus:border-[var(--t-border-color-focus)]"
+                  />
+                </div>
+              </div>
+
               {/* Property: Services to Pitch (Multi-Select) */}
               <div className="px-3 py-2 space-y-1.5 hover:bg-[var(--t-background-primary)] transition-colors">
                 <div className="flex items-center justify-between text-[11px] text-[var(--t-font-color-tertiary)]">
                   <div className="flex items-center gap-1.5">
                     <IconBuilding size={12} className="shrink-0" />
-                    <span>Services to Pitch</span>
+                    <span>All Pitch Scope Services</span>
                   </div>
                   <span className="text-[10px] text-[#5d4ef7] font-mono font-medium">
                     {(activeLead.services || [activeLead.serviceInterest]).length} Selected
@@ -1411,19 +1438,29 @@ export function LeadDetailDrawer() {
                 </div>
                 <div className="flex flex-wrap gap-1 pt-0.5">
                   {ALL_SERVICES.map((svc) => {
-                    const currentList = activeLead.services || [activeLead.serviceInterest];
+                    const currentList = activeLead.services || [activeLead.serviceInterest || 'Web Development'];
                     const isSelected = currentList.includes(svc);
+                    const isPrimary = svc === (activeLead.serviceInterest || currentList[0]);
                     return (
                       <button
                         key={svc}
                         type="button"
                         onClick={() => {
-                          const updated = isSelected
-                            ? currentList.filter((s) => s !== svc)
-                            : [...currentList, svc];
+                          let updated: ServiceType[];
+                          if (isSelected) {
+                            updated = currentList.filter((s) => s !== svc);
+                            if (updated.length === 0) {
+                              updated = [svc];
+                            }
+                          } else {
+                            updated = [...currentList, svc];
+                          }
+                          const newPrimary = updated.includes(activeLead.serviceInterest)
+                            ? activeLead.serviceInterest
+                            : updated[0] || 'Web Development';
                           updateLead(activeLead.id, {
                             services: updated,
-                            serviceInterest: updated[0] || 'Web Development',
+                            serviceInterest: newPrimary,
                           });
                         }}
                         className={`px-1.5 py-0.5 rounded-[4px] text-[10px] font-medium border transition-all flex items-center gap-1 cursor-pointer select-none ${
@@ -1434,6 +1471,11 @@ export function LeadDetailDrawer() {
                       >
                         {isSelected && <IconCheck size={10} className="text-[#5d4ef7] shrink-0" />}
                         <span>{svc}</span>
+                        {isPrimary && (
+                          <span className="text-[8px] px-1 py-0.2 rounded bg-[#5d4ef7] text-white uppercase font-bold tracking-wider">
+                            Primary
+                          </span>
+                        )}
                       </button>
                     );
                   })}
